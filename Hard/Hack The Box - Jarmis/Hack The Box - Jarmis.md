@@ -384,4 +384,4 @@ El resultado práctico es una conexión entrante hacia el puerto 443, seguida de
 
 Esta técnica demuestra que la manipulación del firewall puede sustituir eficazmente la lógica de redirección implementada en Metasploit, proporcionando una vía directa para interceptar y reenviar la solicitud crítica que habilita la explotación del vector SSRF y, en última instancia, la vulnerabilidad OMIGod.
 
-<img src="assets/52.png">
+<img src="assets/52.png"> 
