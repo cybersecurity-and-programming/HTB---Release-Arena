@@ -91,7 +91,7 @@ Este comportamiento sugiere que el backend almacena únicamente aquellas firmas 
 
 <img src="assets/15.png"> 
 
-Sub-Directory Enumeration
+<p align="center"><strong><u>Sub-Directory Enumeration</u></strong></p>
 
 Con el objetivo de ampliar la superficie de enumeración y detectar posibles rutas internas no expuestas en la interfaz principal, se procedió a realizar un barrido exhaustivo de directorios mediante gobuster, empleando diccionarios orientados a aplicaciones web y configuraciones que permiten identificar endpoints ocultos o no indexados. 
 
@@ -116,3 +116,22 @@ Para que el backend pueda “obtener metadatos” de un servidor remoto, no bast
 La documentación también clarificaba un aspecto observado empíricamente en las pruebas anteriores: cuando la firma JARM generada no se encuentra en la base de datos interna, los campos ismalicious y server no son incluidos en el objeto JSON devuelto. En consecuencia, si ismalicious no está establecido explícitamente como true, la API no ejecutará la fase de obtención de metadatos, tal y como se detalla en la documentación. Este comportamiento confirma que el backend aplica una lógica condicional basada en la clasificación de la firma, y que únicamente en escenarios donde la huella coincide con patrones previamente catalogados como maliciosos se desencadena la fase adicional de interacción con el servidor remoto.
 
 Este diseño introduce una diferenciación crítica entre firmas conocidas y desconocidas: las primeras activan mecanismos avanzados de inspección, mientras que las segundas se limitan a la devolución de la huella criptográfica. Esta distinción abre la puerta a vectores de explotación basados en la manipulación de firmas, la inducción de comportamientos condicionales y la potencial instrumentalización del backend para generar tráfico saliente hacia destinos arbitrarios.
+
+<p align="center"><strong><u>Localhost TLS Port Scan</u></strong></p>
+
+Tras identificar la lógica condicional del endpoint /fetch, se procedió a explorar su potencial como vector de enumeración interna. Dado que el servicio ejecuta conexiones salientes hacia el destino proporcionado, resultaba razonable evaluar si esta funcionalidad podía instrumentalizarse para sondear puertos internos del propio host comprometido, aprovechando la capacidad del backend para interpretar la disponibilidad de servicios remotos.
+
+<img src="assets/20.png">   
+
+Al suministrar como destino la dirección del propio servidor objetivo, el comportamiento del endpoint reveló un patrón significativo: cuando el puerto consultado se encontraba abierto, el JSON devuelto incluía el campo endpoint, mientras que, en caso contrario, dicho campo no aparecía. Esta ausencia permitía inferir el estado del puerto sin necesidad de recibir un error explícito. Para facilitar la enumeración, se aplicó un proceso de fuzzing sobre localhost, filtrando las respuestas que contenían "endpoint":"null" mediante la opción --hs, lo que permitió concentrarse exclusivamente en los puertos accesibles.
+
+<img src="assets/21.png">   
+
+El resultado confirmó la presencia de los puertos 22/TCP y 80/TCP, ya conocidos por la fase inicial de reconocimiento. Sin embargo, emergieron dos puertos adicionales: 5985/TCP y 5986/TCP. En entornos Windows, estos puertos se asocian habitualmente a WinRM (Windows Remote Management), pero en sistemas Linux suelen corresponder a la implementación de Open Management Interface (OMI), un componente utilizado para la gestión remota en infraestructuras híbridas y servicios cloud.
+
+La identificación de estos puertos motivó una investigación adicional sobre vulnerabilidades asociadas a OMI. Una búsqueda preliminar reveló CVE 2021 38647, conocida como OMIGod, una vulnerabilidad crítica que afectó a la implementación de OMI desarrollada por Microsoft. Este fallo, ampliamente documentado, se originaba en una gestión defectuosa de las cabeceras de autenticación: el servicio aceptaba peticiones POST sin validar adecuadamente la presencia de credenciales, lo que permitía la ejecución remota de código con privilegios de root mediante una única solicitud especialmente construida.
+
+La explotación de CVE 2021 38647 requiere la capacidad de emitir una petición POST directamente al servicio OMI. Sin embargo, en este escenario, los puertos 5985 y 5986 se encuentran expuestos únicamente en la interfaz interna del host, lo que imposibilita su acceso directo desde el exterior. En consecuencia, resulta imprescindible identificar un mecanismo que permita redirigir o encapsular solicitudes hacia puertos internos, lo que nos conduce a evaluar la existencia de endpoints vulnerables a Server Side Request Forgery (SSRF) dentro de la API de Jarmis.
+
+
+Dado que el endpoint /fetch ya ha demostrado la capacidad de inducir conexiones salientes hacia destinos arbitrarios, la siguiente fase del análisis se orienta a determinar si esta funcionalidad puede ampliarse para emitir solicitudes POST, o si existe algún otro endpoint que permita manipular la naturaleza de la petición enviada por el backend. La identificación de un SSRF con capacidad de modificar el método HTTP constituiría un vector de explotación directo para desencadenar OMIGod y obtener ejecución remota de código con privilegios elevados.
