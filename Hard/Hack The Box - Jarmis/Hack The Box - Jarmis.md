@@ -366,7 +366,7 @@ La función quote se empleó para URL codificar la cadena completa, asegurando q
 
 Una vez ensamblada la petición final, se envió el URL Gopher a través del endpoint de Jarmis. La cadena de redirección se ejecutó correctamente, y el servicio OMI procesó la solicitud POST construida manualmente. Instantes después, se recibió una conexión entrante que estableció una reverse shell con privilegios de root, confirmando la explotación exitosa de CVE 2021 38647 (OMIGod) mediante un vector de Server Side Request Forgery.
 
-<img src="assets/49.png">
+<img src="assets/49a.png">
 
 Como vía alternativa al uso de módulos personalizados en Metasploit, se optó por instrumentalizar el flujo de red mediante reglas de traducción de direcciones (NAT) en el firewall del sistema. Esta aproximación permite interceptar y redirigir paquetes específicos sin depender de un framework externo, manteniendo un control granular sobre la capa de transporte.
 
