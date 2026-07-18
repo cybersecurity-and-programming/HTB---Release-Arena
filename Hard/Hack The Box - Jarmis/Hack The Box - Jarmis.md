@@ -179,7 +179,7 @@ Al solicitar nuevamente la generación de la firma JARM, el servidor Metasploit 
 
 La respuesta JSON devuelta por Jarmis en esta ocasión resultó especialmente reveladora: aunque el campo ismalicious no figuraba explícitamente como true, el atributo server aparecía presente —aunque vacío— y la heurística del servicio sugería que el host podría estar asociado a Metasploit.
 
-<img src="assets/32.png">  
+<img src="assets/32.png">
 
 Este comportamiento indica que, incluso cuando la firma no es categorizada formalmente como maliciosa, el backend puede activar parcialmente la lógica de inspección si detecta patrones que sugieren la presencia de un servidor Metasploit, lo que refuerza la hipótesis de que el servicio implementa mecanismos de correlación más complejos que una simple coincidencia exacta de firmas.
 
@@ -187,48 +187,39 @@ La captura en Wireshark volvió a registrar 11 flujos, lo que confirma que la in
 
 La siguiente fase del análisis, por tanto, se orienta a identificar un mecanismo que permita interceptar, redirigir o manipular esta undécima solicitud, con el objetivo de determinar si puede instrumentalizarse como un canal SSRF capaz de emitir peticiones POST hacia los puertos internos 5985 y 5986, habilitando así la explotación del vector OMIGod.
 
-SSRF
+<p align="center"><strong><u>SSRF</u></strong></p>
 
 Con el objetivo de analizar en profundidad la naturaleza del undécimo flujo TLS —el que no forma parte del proceso estándar de fingerprinting JARM— se planteó la posibilidad de interceptar y redirigir dicha solicitud para determinar su estructura, su método HTTP y su potencial como vector de SSRF. Dado que los módulos existentes de Metasploit no contemplan esta funcionalidad de forma nativa, se procedió a desarrollar un módulo personalizado que permitiera capturar la petición y redirigirla hacia un destino arbitrario bajo control del atacante.
 
- 
+<img src="assets/33.png"> 
 
 Los módulos de Metasploit se almacenan en ~/.msf4/modules, y dado que la ejecución de msfconsole se realizaría con privilegios elevados para escuchar en puertos bajos, se trabajó directamente en /root/.msf4. Se creó un directorio específico para alojar el nuevo módulo y, como base, se tomó auxiliary/server/capture/http_basic, cuya estructura resultaba idónea para instrumentar la lógica de captura y redirección.
 
- 
-
-
-
-
-
+<img src="assets/34.png"> 
 
 El módulo original contenía cinco funciones principales: initialize, responsable de definir la metadata; support_ipv6, que simplemente devolvía false; run, encargado de inicializar variables y delegar en exploit; report_creds, orientado al almacenamiento de credenciales; y on_request, que gestionaba las solicitudes HTTP(S) entrantes.
 
- 
+<img src="assets/35.png"> 
 
 Dado que el objetivo del módulo era exclusivamente interceptar y redirigir la petición, se eliminó por completo la función report_creds, irrelevante en este contexto. La lógica crítica residía en on_request, donde se implementó la instrucción de redirección. Se suprimió la verificación de autenticación presente en el módulo original y se redujo la función a un comportamiento mínimo: redirigir la solicitud entrante siempre que el parámetro RedirectURL estuviera definido. Esta modificación permitía capturar cualquier petición generada por el backend de Jarmis y reenviarla hacia un servidor controlado por el atacante.
 
- 
+<img src="assets/36.png"> 
 
 Tras actualizar la metadata y los parámetros configurables del módulo, se reinició Metasploit —o alternativamente se ejecutó reload_all— para que el nuevo módulo quedara registrado en el framework. 
 
- 
+<img src="assets/37.png">  
 
 A continuación, se configuró el módulo personalizado para redirigir las solicitudes hacia el propio host del atacante.
 
- 
-
-
-
-
+<img src="assets/38.png"> 
 
 En una segunda consola, se levantó un servidor HTTP simple mediante Python, destinado a recibir la petición redirigida. 
 
- 
+<img src="assets/39.png">  
 
 Al solicitar nuevamente la generación de la firma JARM desde Jarmis, el módulo personalizado recibió un callback, lo que confirmó que la undécima solicitud había sido interceptada correctamente. Instantes después, el servidor Python también registró una conexión entrante, evidenciando que la redirección se había ejecutado con éxito.
 
- 
+<img src="assets/40.png">  
 
 Este comportamiento constituye una validación inequívoca: la undécima solicitud generada por el backend de Jarmis es redirigible y, por tanto, manipulable, lo que habilita un vector de Server Side Request Forgery plenamente funcional. En consecuencia, el atacante dispone ahora de un mecanismo para forjar solicitudes desde el servidor objetivo hacia cualquier destino, incluyendo servicios internos inaccesibles desde el exterior. 
 
