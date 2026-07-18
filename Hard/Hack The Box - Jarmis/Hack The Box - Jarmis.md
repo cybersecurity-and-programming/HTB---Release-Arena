@@ -55,60 +55,38 @@ Una vez cargada la interfaz de Jarmis, el menú desplegable del motor de búsque
 
 La primera modalidad, basada en la búsqueda por ID, aceptaba valores enteros y devolvía un objeto JSON que contenía la huella JARM asociada al identificador solicitado. Este comportamiento evidenciaba que el servicio mantenía un repositorio interno de firmas previamente generadas, accesible sin autenticación y susceptible de enumeración exhaustiva. La estructura del JSON, junto con la ausencia de restricciones en la entrada, sugería que el backend operaba como un agregador de fingerprints, probablemente almacenados tras ejecuciones previas del motor.
 
- 
-
-
-
-
-
-
-
+<img src="assets/8.png">
 
 La segunda modalidad, denominada Fetch Jarm, presentaba una interfaz significativamente más simple: un único campo destinado a recibir una cadena de texto. La simplicidad del parámetro, unida a la semántica del servicio, permitía inferir que el backend esperaba un endpoint remoto sobre el cual ejecutar la lógica de fingerprinting. Dado que JARM es intrínsecamente un mecanismo de identificación activa de servidores TLS, resultaba razonable concluir que el campo debía aceptar un URL o, al menos, un host accesible mediante el protocolo TLS.
 
- 
+<img src="assets/9.png"> 
 
 Para validar esta hipótesis y determinar si el servicio realizaba conexiones salientes hacia el recurso proporcionado, se introdujo la dirección IP del atacante en el campo de entrada. Con el fin de monitorizar cualquier intento de conexión desde el host objetivo, se habilitó un listener en el puerto 443/TCP, empleando ncat en modo SSL para emular un servidor TLS mínimo y capturar cualquier interacción entrante.
 
- 
+<img src="assets/10.png">  
 
 El resultado confirmó la sospecha inicial: inmediatamente después de enviar la solicitud, el servidor de Jarmis estableció una conexión hacia la dirección indicada, evidenciando que el backend ejecutaba de forma activa el proceso de fingerprinting sobre el host proporcionado. 
 
- 
-
-
-
-
-
-
-
-
-
-
+<img src="assets/11.png"> 
 
 El análisis de las conexiones entrantes reveló un comportamiento característico del algoritmo JARM. Este mecanismo, en su implementación estándar, genera la huella criptográfica a partir de diez intentos de negociación TLS, cada uno con variaciones específicas en los parámetros del Client Hello. 
 
- 
+<img src="assets/12.png">  
 
 Sin embargo, al emplear ncat en modo SSL sin configuración adicional, únicamente se registró una única conexión en nuestro listener. Esta discrepancia se explica por la naturaleza pasiva de ncat: al no emitir respuestas válidas para las sucesivas negociaciones, el servidor objetivo interpreta los intentos como fallidos y los marca con el código 000, lo que justifica la presencia de nueve tríadas de ceros en la firma JARM devuelta por el servicio.
 
 Para obtener una visión más completa del comportamiento del backend, se habilitó el parámetro -k en ncat, permitiendo la aceptación de múltiples conexiones consecutivas. Bajo esta configuración, el listener capturó los diez intentos de conexión correspondientes al proceso completo de fingerprinting. Este resultado confirmó que el servicio Jarmis ejecuta la lógica JARM de manera íntegra, replicando fielmente la secuencia de negociaciones TLS que define la huella criptográfica.
 
- 
+<img src="assets/13.png">  
 
 Un aspecto llamativo emergió al comparar los objetos JSON generados en ambas pruebas. En la segunda ejecución —aquella en la que se capturaron los diez intentos— el JSON devuelto por el servicio resultó notablemente más breve, omitiendo campos como ismalicious y server. Esta ausencia sugiere que el backend aplica una lógica condicional en función de la calidad o completitud de las respuestas obtenidas durante el fingerprinting. 
 
-
-
-
-
-
-
-
 En otras palabras, cuando la interacción con el host remoto no produce un conjunto de atributos suficientemente rico, el servicio complementa la firma con metadatos adicionales; mientras que, ante una secuencia completa de negociaciones, se limita a devolver la huella estricta sin anotaciones auxiliares.
 
- 
+<img src="assets/14.png">  
 
 La divergencia entre ambas firmas permitió realizar una comprobación adicional: al consultar la base de datos interna mediante la opción de búsqueda por ID, la firma correspondiente a la primera interacción —la incompleta, con nueve tríadas de ceros— sí se encontraba registrada, mientras que la segunda, derivada de la secuencia completa de diez conexiones, no figuraba en el repositorio. 
 
 Este comportamiento sugiere que el backend almacena únicamente aquellas firmas que cumplen ciertos criterios de clasificación o que han sido generadas en contextos específicos, lo que abre la puerta a hipótesis sobre mecanismos internos de validación, categorización o incluso detección de comportamientos anómalos.
+
+<img src="assets/15.png"> 
