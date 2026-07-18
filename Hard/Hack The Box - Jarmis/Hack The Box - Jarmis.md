@@ -25,7 +25,7 @@ Una vez que identificada la dirección IP de la máquina objetivo, utilicé el c
 - (--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
 - (-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
 
-<center><strong>Web Enumeration</strong></center>
+<p align="center"><strong><u>Web Enumeration</u></strong></p>
 
 Tras el acceso inicial a la superficie web expuesta por el activo, la interfaz permanecía indefinidamente anclada en un estado de Loading…, lo que sugería una dependencia de recursos externos o una resolución incompleta del dominio. 
 
@@ -90,3 +90,29 @@ La divergencia entre ambas firmas permitió realizar una comprobación adicional
 Este comportamiento sugiere que el backend almacena únicamente aquellas firmas que cumplen ciertos criterios de clasificación o que han sido generadas en contextos específicos, lo que abre la puerta a hipótesis sobre mecanismos internos de validación, categorización o incluso detección de comportamientos anómalos.
 
 <img src="assets/15.png"> 
+
+Sub-Directory Enumeration
+
+Con el objetivo de ampliar la superficie de enumeración y detectar posibles rutas internas no expuestas en la interfaz principal, se procedió a realizar un barrido exhaustivo de directorios mediante gobuster, empleando diccionarios orientados a aplicaciones web y configuraciones que permiten identificar endpoints ocultos o no indexados. 
+
+<img src="assets/16.png">  
+
+El análisis reveló la existencia del endpoint /docs, el cual contenía la documentación formal de la API de Jarmis. Este hallazgo resultó especialmente relevante, ya que la documentación ofrecía una visión explícita de las capacidades del backend y de los parámetros aceptados por cada uno de los servicios expuestos.
+
+<img src="assets/17.png">  
+
+La revisión de la API confirmó que el endpoint /search/id/{jarm_id} replicaba exactamente el comportamiento observado en la interfaz gráfica: aceptaba un identificador numérico y devolvía la firma JARM correspondiente. 
+
+Por su parte, /search/signature/ admitía una cadena arbitraria y un parámetro opcional denominado max_results, lo que sugería la existencia de un mecanismo de búsqueda por similitud o correlación entre firmas, posiblemente destinado a identificar servidores con configuraciones criptográficas afines.
+
+<img src="assets/18.png">  
+
+El endpoint /fetch, sin embargo, proporcionaba información adicional de especial interés. La documentación describía su funcionalidad como “grab metadata if malicious”, una frase que, pese a su concisión, implicaba una lógica interna más compleja.
+
+Para que el backend pueda “obtener metadatos” de un servidor remoto, no basta con ejecutar el proceso de fingerprinting JARM —que se limita a la negociación TLS—, sino que es necesario establecer una conexión real y sostenida con el host objetivo. Esto implica que el servicio Jarmis no solo realiza las diez negociaciones TLS propias del fingerprinting, sino que además puede ejecutar solicitudes adicionales cuando la firma resultante es clasificada como maliciosa.
+
+<img src="assets/19.png">  
+
+La documentación también clarificaba un aspecto observado empíricamente en las pruebas anteriores: cuando la firma JARM generada no se encuentra en la base de datos interna, los campos ismalicious y server no son incluidos en el objeto JSON devuelto. En consecuencia, si ismalicious no está establecido explícitamente como true, la API no ejecutará la fase de obtención de metadatos, tal y como se detalla en la documentación. Este comportamiento confirma que el backend aplica una lógica condicional basada en la clasificación de la firma, y que únicamente en escenarios donde la huella coincide con patrones previamente catalogados como maliciosos se desencadena la fase adicional de interacción con el servidor remoto.
+
+Este diseño introduce una diferenciación crítica entre firmas conocidas y desconocidas: las primeras activan mecanismos avanzados de inspección, mientras que las segundas se limitan a la devolución de la huella criptográfica. Esta distinción abre la puerta a vectores de explotación basados en la manipulación de firmas, la inducción de comportamientos condicionales y la potencial instrumentalización del backend para generar tráfico saliente hacia destinos arbitrarios.
