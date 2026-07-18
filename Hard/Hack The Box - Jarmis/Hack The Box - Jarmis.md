@@ -10,7 +10,7 @@ La explotación completa se articula encadenando la solicitud suplementaria gene
 
 Como vía alternativa, también es posible interceptar y redirigir la conexión suplementaria manipulando la capa de red del sistema mediante reglas selectivas en el firewall. Esta aproximación, basada en NAT y selección estadística de paquetes, permite capturar exclusivamente el flujo TLS adicional sin interferir con las diez conexiones del fingerprinting JARM, desviándolo hacia un servicio de escucha controlado por el analista. Esta variante ofrece una solución minimalista y transparente que reproduce el comportamiento necesario para desencadenar el vector SSRF sin depender de herramientas externas.
 
-<center><strong><u>Enumeración</u></strong></center>
+<p align="center"><strong><u>Enumeración</u></strong></p>
 
 La dirección IP de la máquina víctima es 10.129.95.238. Por tanto, envié 5 trazas ICMP para verificar que existe conectividad entre las dos máquinas.
 
