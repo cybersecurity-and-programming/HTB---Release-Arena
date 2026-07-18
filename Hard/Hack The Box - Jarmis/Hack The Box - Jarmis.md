@@ -119,7 +119,7 @@ La documentación también clarificaba un aspecto observado empíricamente en la
 
 Este diseño introduce una diferenciación crítica entre firmas conocidas y desconocidas: las primeras activan mecanismos avanzados de inspección, mientras que las segundas se limitan a la devolución de la huella criptográfica. Esta distinción abre la puerta a vectores de explotación basados en la manipulación de firmas, la inducción de comportamientos condicionales y la potencial instrumentalización del backend para generar tráfico saliente hacia destinos arbitrarios.
 
-<p align="center"><strong><u>Localhost TLS Port Scan</u></strong></p>
+<p align="center"><strong>Localhost TLS Port Scan</strong></p>
 
 Tras identificar la lógica condicional del endpoint /fetch, se procedió a explorar su potencial como vector de enumeración interna. Dado que el servicio ejecuta conexiones salientes hacia el destino proporcionado, resultaba razonable evaluar si esta funcionalidad podía instrumentalizarse para sondear puertos internos del propio host comprometido, aprovechando la capacidad del backend para interpretar la disponibilidad de servicios remotos.
 
@@ -134,6 +134,209 @@ El resultado confirmó la presencia de los puertos 22/TCP y 80/TCP, ya conocidos
 La identificación de estos puertos motivó una investigación adicional sobre vulnerabilidades asociadas a OMI. Una búsqueda preliminar reveló CVE 2021 38647, conocida como OMIGod, una vulnerabilidad crítica que afectó a la implementación de OMI desarrollada por Microsoft. Este fallo, ampliamente documentado, se originaba en una gestión defectuosa de las cabeceras de autenticación: el servicio aceptaba peticiones POST sin validar adecuadamente la presencia de credenciales, lo que permitía la ejecución remota de código con privilegios de root mediante una única solicitud especialmente construida.
 
 La explotación de CVE 2021 38647 requiere la capacidad de emitir una petición POST directamente al servicio OMI. Sin embargo, en este escenario, los puertos 5985 y 5986 se encuentran expuestos únicamente en la interfaz interna del host, lo que imposibilita su acceso directo desde el exterior. En consecuencia, resulta imprescindible identificar un mecanismo que permita redirigir o encapsular solicitudes hacia puertos internos, lo que nos conduce a evaluar la existencia de endpoints vulnerables a Server Side Request Forgery (SSRF) dentro de la API de Jarmis.
+
+<p align="center"><strongDumping the database</strong></p>
+
+Con el objetivo de profundizar en la lógica interna del servicio y detectar posibles vectores de explotación indirecta, se procedió a volcar íntegramente la base de datos de firmas JARM mantenida por el backend. Mediante una serie de consultas iterativas —determinadas inicialmente por prueba y error— se estableció que el repositorio contenía 222 registros, cada uno accesible a través del endpoint /search/id/{jarm_id}. Para automatizar la extracción, se empleó un bucle en bash que solicitaba secuencialmente cada identificador y almacenaba la respuesta en un archivo local.
+
+<img src="assets/23.png">    
+
+Una vez recopilados los registros, se utilizó la herramienta jq para normalizar y estructurar la salida JSON, permitiendo una inspección más precisa de los campos relevantes. Dado que la API únicamente establece conexiones adicionales para la obtención de metadatos cuando la firma está catalogada como maliciosa, el análisis se centró exclusivamente en los registros cuyo campo ismalicious figuraba como true. 
+
+<img src="assets/24.png">    
+
+Para cuantificar estos casos, se empleó la opción -c de jq, que condensa cada objeto en una única línea, y posteriormente wc -l, obteniendo así el número exacto de firmas clasificadas como maliciosas.
+
+<img src="assets/25.png">    
+
+La inspección detallada de estos registros reveló un hallazgo particularmente significativo: uno de los JARM maliciosos estaba asociado explícitamente a Metasploit. Este hecho implicaba que, si el backend detectaba una firma coincidente con la huella generada por un servidor Metasploit, activaría automáticamente la fase de obtención de metadatos, estableciendo una conexión hacia el servidor controlado por el atacante. En otras palabras, la presencia de esta firma en la base de datos convertía a Metasploit en un señuelo legítimo para inducir tráfico saliente desde el host objetivo.
+
+<img src="assets/26.png"> 
+
+Para validar esta hipótesis, se configuró un listener en Metasploit utilizando el módulo exploit/multi/handler con el payload windows/meterpreter/reverse_https, estableciendo LPORT=443 para replicar el comportamiento observado en pruebas anteriores. Paralelamente, se inició una captura en Wireshark, con el fin de contabilizar los flujos TCP generados durante la interacción, aun cuando el contenido de las comunicaciones TLS permaneciera cifrado.
+
+<img src="assets/27.png">  
+
+Al solicitar la generación de la firma JARM correspondiente al servidor Metasploit, el backend no produjo ninguna sesión interactiva en la consola de Metasploit, lo que indica que la conexión establecida por Jarmis no desencadena la ejecución del payload. Sin embargo, la respuesta JSON devuelta por la aplicación resultó reveladora: el campo server aparecía poblado y el atributo ismalicious figuraba como true, confirmando que la firma había sido reconocida como maliciosa y que el backend había ejecutado la fase de obtención de metadatos.
+
+<img src="assets/28.png">  
+
+La captura en Wireshark corroboró este comportamiento: se registraron 12 flujos TCP. El primero correspondía a la solicitud inicial enviada por el atacante al servicio Jarmis, mientras que los restantes representaban las conexiones salientes generadas por el backend hacia el servidor Metasploit. Este patrón confirma que el servicio ejecuta múltiples interacciones adicionales cuando detecta una firma catalogada como maliciosa, lo que constituye un vector de explotación potencialmente valioso para pivotar hacia servicios internos o inducir tráfico arbitrario desde el host comprometido.
+
+<img src="assets/29.png">  
+
+La captura en Wireshark permitió observar que, además del flujo inicial correspondiente a la solicitud enviada al servicio Jarmis, se generaban 11 flujos TLS adicionales. Este número resultaba particularmente significativo, dado que el algoritmo JARM únicamente requiere 10 negociaciones TLS para construir la huella criptográfica. La presencia de un undécimo flujo sugería la existencia de una interacción suplementaria, no vinculada al proceso estándar de fingerprinting.
+
+<img src="assets/30.png">  
+
+La documentación de la API proporcionaba la clave interpretativa: en el endpoint /fetch, se especifica que, cuando una firma es clasificada como maliciosa, el backend procede a obtener metadatos del servidor remoto, lo que implica el establecimiento de una conexión TCP completa, más allá de las negociaciones TLS propias del fingerprinting. En consecuencia, el undécimo flujo TLS observado en la captura corresponde inequívocamente a esta fase adicional de inspección, activada únicamente cuando la firma coincide con un patrón catalogado como malicioso en la base de datos interna.
+
+Con el fin de analizar la naturaleza de esta interacción suplementaria, se optó por emplear el módulo auxiliary/server/capture/http de Metasploit, diseñado para capturar solicitudes HTTP(S). Se habilitó SSL y se configuró el puerto del servidor (srvport) en 443, replicando las condiciones de las pruebas anteriores. 
+
+<img src="assets/31.png">  
+
+Al solicitar nuevamente la generación de la firma JARM, el servidor Metasploit recibió un callback, lo que confirmó que el backend había establecido la conexión adicional destinada a la obtención de metadatos.
+
+La respuesta JSON devuelta por Jarmis en esta ocasión resultó especialmente reveladora: aunque el campo ismalicious no figuraba explícitamente como true, el atributo server aparecía presente —aunque vacío— y la heurística del servicio sugería que el host podría estar asociado a Metasploit.
+
+<img src="assets/32.png">  
+
+Este comportamiento indica que, incluso cuando la firma no es categorizada formalmente como maliciosa, el backend puede activar parcialmente la lógica de inspección si detecta patrones que sugieren la presencia de un servidor Metasploit, lo que refuerza la hipótesis de que el servicio implementa mecanismos de correlación más complejos que una simple coincidencia exacta de firmas.
+
+La captura en Wireshark volvió a registrar 11 flujos, lo que confirma que la interacción suplementaria se produce de manera consistente siempre que el backend decide obtener metadatos del servidor remoto. Dado que esta undécima conexión no forma parte del proceso de fingerprinting, sino de una fase adicional de inspección, se convierte en un candidato evidente para un vector de Server Side Request Forgery (SSRF). Si se lograra manipular el destino o la naturaleza de esta solicitud adicional, sería posible redirigirla hacia servicios internos del host comprometido, incluyendo aquellos que requieren métodos HTTP específicos —como el servicio OMI afectado por CVE 2021 38647— y que no son accesibles desde el exterior.
+
+La siguiente fase del análisis, por tanto, se orienta a identificar un mecanismo que permita interceptar, redirigir o manipular esta undécima solicitud, con el objetivo de determinar si puede instrumentalizarse como un canal SSRF capaz de emitir peticiones POST hacia los puertos internos 5985 y 5986, habilitando así la explotación del vector OMIGod.
+
+SSRF
+
+Con el objetivo de analizar en profundidad la naturaleza del undécimo flujo TLS —el que no forma parte del proceso estándar de fingerprinting JARM— se planteó la posibilidad de interceptar y redirigir dicha solicitud para determinar su estructura, su método HTTP y su potencial como vector de SSRF. Dado que los módulos existentes de Metasploit no contemplan esta funcionalidad de forma nativa, se procedió a desarrollar un módulo personalizado que permitiera capturar la petición y redirigirla hacia un destino arbitrario bajo control del atacante.
+
+ 
+
+Los módulos de Metasploit se almacenan en ~/.msf4/modules, y dado que la ejecución de msfconsole se realizaría con privilegios elevados para escuchar en puertos bajos, se trabajó directamente en /root/.msf4. Se creó un directorio específico para alojar el nuevo módulo y, como base, se tomó auxiliary/server/capture/http_basic, cuya estructura resultaba idónea para instrumentar la lógica de captura y redirección.
+
+ 
+
+
+
+
+
+
+El módulo original contenía cinco funciones principales: initialize, responsable de definir la metadata; support_ipv6, que simplemente devolvía false; run, encargado de inicializar variables y delegar en exploit; report_creds, orientado al almacenamiento de credenciales; y on_request, que gestionaba las solicitudes HTTP(S) entrantes.
+
+ 
+
+Dado que el objetivo del módulo era exclusivamente interceptar y redirigir la petición, se eliminó por completo la función report_creds, irrelevante en este contexto. La lógica crítica residía en on_request, donde se implementó la instrucción de redirección. Se suprimió la verificación de autenticación presente en el módulo original y se redujo la función a un comportamiento mínimo: redirigir la solicitud entrante siempre que el parámetro RedirectURL estuviera definido. Esta modificación permitía capturar cualquier petición generada por el backend de Jarmis y reenviarla hacia un servidor controlado por el atacante.
+
+ 
+
+Tras actualizar la metadata y los parámetros configurables del módulo, se reinició Metasploit —o alternativamente se ejecutó reload_all— para que el nuevo módulo quedara registrado en el framework. 
+
+ 
+
+A continuación, se configuró el módulo personalizado para redirigir las solicitudes hacia el propio host del atacante.
+
+ 
+
+
+
+
+
+En una segunda consola, se levantó un servidor HTTP simple mediante Python, destinado a recibir la petición redirigida. 
+
+ 
+
+Al solicitar nuevamente la generación de la firma JARM desde Jarmis, el módulo personalizado recibió un callback, lo que confirmó que la undécima solicitud había sido interceptada correctamente. Instantes después, el servidor Python también registró una conexión entrante, evidenciando que la redirección se había ejecutado con éxito.
+
+ 
+
+Este comportamiento constituye una validación inequívoca: la undécima solicitud generada por el backend de Jarmis es redirigible y, por tanto, manipulable, lo que habilita un vector de Server Side Request Forgery plenamente funcional. En consecuencia, el atacante dispone ahora de un mecanismo para forjar solicitudes desde el servidor objetivo hacia cualquier destino, incluyendo servicios internos inaccesibles desde el exterior. 
+
+Dado que la explotación de OMIGod (CVE 2021 38647) requiere la emisión de una petición POST hacia el servicio OMI en los puertos 5985/5986, la capacidad de redirigir esta undécima solicitud constituye el puente necesario para desencadenar la vulnerabilidad y obtener ejecución remota de código con privilegios de root.
+
+OMIGod
+
+La explotación de OMIGod (CVE 2021 38647) exige la emisión de una petición POST hacia el servicio OMI, alojado en los puertos internos 5985/TCP (sin TLS) y 5986/TCP (con TLS). El proof of concept disponible en GitHub confirma que el vector de ataque consiste en enviar un cuerpo SOAP XML especialmente construido, donde el elemento <p:command> contiene la instrucción arbitraria que será ejecutada con privilegios de root en el host remoto. 
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+El payload se inserta dinámicamente mediante el método .format(), lo que permite adaptar la carga útil a las necesidades del atacante.
+
+ 
+
+Dado que el servicio OMI no es accesible desde el exterior, la única vía viable para desencadenar la vulnerabilidad consiste en instrumentalizar el SSRF previamente identificado en el undécimo flujo TLS generado por Jarmis. Sin embargo, este flujo únicamente se activa cuando la firma JARM coincide con un registro catalogado como malicioso en la base de datos interna. Por ello, resulta imprescindible encadenar la solicitud a través de Metasploit, cuya firma sí está presente en el repositorio, y no interactuar directamente con un servidor Flask, cuya huella no desencadenaría la fase de obtención de metadatos.
+
+ 
+
+El siguiente desafío consiste en transformar esta solicitud suplementaria en una petición POST, ya que el backend de Jarmis, al generar la undécima conexión, utiliza un User Agent identificado como curl, lo que abre la puerta a redirigir la solicitud hacia un esquema Gopher, capaz de encapsular peticiones arbitrarias, incluyendo POST con cuerpo XML. No obstante, para facilitar la depuración y mantener un control granular sobre la lógica de redirección, se optó por una arquitectura en cadena:
+
+1.	Jarmis →
+2.	módulo personalizado de Metasploit →
+3.	servidor Flask →
+4.	servicio OMI interno en localhost:5985.
+
+Para ello, se configuró Metasploit de modo que redirigiera la solicitud hacia un servidor Flask escuchando en 8443/TCP con TLS. El servidor Flask, implementado de forma minimalista, aceptaba la conexión entrante y la reenviaba hacia un destino arbitrario. La configuración incluía ssl_context para habilitar TLS, host='0.0.0.0' para permitir conexiones externas y debug=True para facilitar la modificación del código sin reiniciar la aplicación.
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+Una vez desplegado el servidor Flask, se verificó la cadena de redirección: al solicitar la generación de la firma JARM desde Jarmis, la petición era interceptada por el módulo personalizado de Metasploit, reenviada al servidor Flask y finalmente redirigida hacia un listener nc en el puerto 80 del atacante. La captura confirmó que la cadena funcionaba correctamente y que la solicitud podía ser desviada hacia cualquier destino.
+
+ 
+
+Este resultado constituye una validación crítica: la solicitud suplementaria generada por Jarmis es completamente redirigible y manipulable, lo que habilita un vector de SSRF plenamente funcional. La arquitectura en cadena permite ahora transformar la solicitud en un POST dirigido al puerto interno 5985, encapsulando el cuerpo SOAP XML necesario para explotar OMIGod. 
+
+Gopher
+
+La fase final de instrumentación del vector SSRF exige transformar la solicitud suplementaria generada por Jarmis en una petición POST plenamente controlada, capaz de encapsular el cuerpo SOAP XML necesario para desencadenar la vulnerabilidad OMIGod. En este contexto, el protocolo Gopher adquiere una relevancia estratégica: al carecer de cabeceras y tratar el contenido íntegro del URL como cuerpo de la solicitud, permite construir manualmente cualquier estructura HTTP, incluyendo peticiones POST con contenido arbitrario. Esta característica lo convierte en un mecanismo idóneo para encapsular el payload SOAP requerido por CVE 2021 38647.
+
+ 
+
+Antes de proceder a la redirección hacia el servicio OMI interno, se verificó el funcionamiento del esquema Gopher realizando solicitudes controladas hacia localhost. Para ello, se sustituyó el valor de RedirectURL en el módulo personalizado de Metasploit por un URL Gopher que contenía una petición HTTP construida manualmente. Al enviar nuevamente la solicitud desde Jarmis, la cadena de redirección culminó en una conexión entrante en el listener local, confirmando que el backend aceptaba el esquema Gopher y que la solicitud era transmitida íntegramente.
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+Durante esta prueba emergió un detalle técnico de especial importancia. Al repetir la solicitud y volcar la respuesta a un archivo, se observó que el contenido final incluía los bytes 0x0d0a (\r\n). 
+
+ 
+
+Esta secuencia, correspondiente a un retorno de carro y salto de línea, implica que el cuerpo de la petición contiene dos bytes adicionales respecto al contenido visible. En consecuencia, cualquier cálculo del campo Content-Length en la petición POST debe incorporar estos dos bytes suplementarios. De lo contrario, el servicio OMI rechazará la solicitud por discrepancia en la longitud declarada, invalidando el intento de explotación.
+
+ 
+
+Este hallazgo es crítico para la fase siguiente: la construcción del URL Gopher que encapsulará la petición POST dirigida a localhost:5985. La precisión en el cálculo de la longitud del cuerpo es indispensable para evitar errores de parsing en el servicio OMI y garantizar que la carga SOAP XML sea procesada correctamente. Con la cadena de redirección plenamente operativa y el comportamiento del esquema Gopher validado, el entorno está preparado para forjar la petición POST definitiva que desencadenará la vulnerabilidad OMIGod mediante SSRF.
+
+Remote Shell
+
+Para integrar el proof of concept de OMIGod en la cadena de explotación construida hasta este punto, se procedió a adaptar el payload SOAP XML utilizado en la vulnerabilidad. El POC original define una variable DATA que contiene la estructura completa de la petición, incluyendo el elemento <p:command>, donde se inserta la instrucción arbitraria que será ejecutada con privilegios de root. Este campo se sustituyó por {}, permitiendo rellenarlo dinámicamente mediante .format(), lo que facilita la incorporación de cargas útiles personalizadas.
+
+ 
+
+
+
+
+
+Paralelamente, se elaboró una plantilla para la petición HTTP (REQUEST), incorporando los encabezados necesarios, el campo Content-Length y el cuerpo XML. Dado que el protocolo HTTP exige la secuencia \r\n como delimitador de líneas, y Python en entornos Linux interpreta los saltos de línea únicamente como \n, fue necesario insertar explícitamente los caracteres \r para garantizar la correcta construcción de la petición. Este detalle es crítico, ya que cualquier discrepancia en la estructura de los encabezados puede provocar que el servicio OMI rechace la solicitud.
+
+Con el fin de evitar errores derivados de caracteres especiales en la carga útil, se optó por encapsular la reverse shell en base64, lo que garantiza que el contenido del comando no interfiera con la sintaxis del XML ni con el proceso de URL encoding. El parámetro cmd se actualizó con la instrucción que decodifica y ejecuta la carga base64, y se modificó la ruta del servidor Flask para adaptarla a la nueva lógica de redirección.
+
+La función quote se empleó para URL codificar la cadena completa, asegurando que el payload pudiera ser transportado sin alteraciones a través del esquema Gopher. Este paso es indispensable, ya que el backend de Jarmis, al generar la undécima solicitud, utiliza curl como User Agent, lo que permite redirigir la petición hacia un URL Gopher que encapsule la estructura completa del POST.
+
+Una vez ensamblada la petición final, se envió el URL Gopher a través del endpoint de Jarmis. La cadena de redirección se ejecutó correctamente, y el servicio OMI procesó la solicitud POST construida manualmente. Instantes después, se recibió una conexión entrante que estableció una reverse shell con privilegios de root, confirmando la explotación exitosa de CVE 2021 38647 (OMIGod) mediante un vector de Server Side Request Forgery.
+
+
 
 
 Dado que el endpoint /fetch ya ha demostrado la capacidad de inducir conexiones salientes hacia destinos arbitrarios, la siguiente fase del análisis se orienta a determinar si esta funcionalidad puede ampliarse para emitir solicitudes POST, o si existe algún otro endpoint que permita manipular la naturaleza de la petición enviada por el backend. La identificación de un SSRF con capacidad de modificar el método HTTP constituiría un vector de explotación directo para desencadenar OMIGod y obtener ejecución remota de código con privilegios elevados.
