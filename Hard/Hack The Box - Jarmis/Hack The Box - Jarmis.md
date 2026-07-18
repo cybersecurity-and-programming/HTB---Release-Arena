@@ -25,23 +25,25 @@ Una vez que identificada la dirección IP de la máquina objetivo, utilicé el c
 - (--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
 - (-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
 
+<img src="assets/3.png">
+
 <p align="center"><strong><u>Web Enumeration</u></strong></p>
 
 Tras el acceso inicial a la superficie web expuesta por el activo, la interfaz permanecía indefinidamente anclada en un estado de Loading…, lo que sugería una dependencia de recursos externos o una resolución incompleta del dominio. 
 
-<img src="assets/3.png"> 
+<img src="assets/4.png"> 
 
 Ante esta anomalía, se procedió a un análisis más granular del tráfico generado por el navegador, inspeccionando las peticiones consignadas en la pestaña Network. Allí se identificó una solicitud GET dirigida al endpoint http://jarmis.htb, lo que evidenciaba que el servicio web delegaba parte de su funcionalidad en dicho dominio.
 
-<img src="assets/4.png"> 
+<img src="assets/5.png">  
 
 Con el fin de normalizar la resolución DNS y garantizar la correcta interacción con el servicio, se incorporó una entrada específica para jarmis.htb en el archivo /etc/hosts. 
 
-<img src="assets/5.png"> 
+<img src="assets/6.png"> 
 
 Tras esta modificación, el acceso al dominio reveló una plataforma que se autodenominaba Jarmis, presentada como un motor de búsqueda sustentado en mecanismos de identificación criptográfica.
 
-<img src="assets/6.png"> 
+<img src="assets/7.png"> 
 
 En este punto resultó pertinente contextualizar el concepto de JARM, dado que la nomenclatura del servicio parecía aludir directamente a esta tecnología. JARM constituye una técnica de fingerprinting activo orientada a la caracterización de servidores que implementan Transport Layer Security (TLS). Su funcionamiento se basa en la emisión de un conjunto de diez paquetes Client Hello especialmente diseñados, cada uno con variaciones en parámetros críticos del protocolo. 
 
@@ -51,45 +53,43 @@ La aparición de un servicio web que se autodefine como “Search Engine” pero
 
 Una vez cargada la interfaz de Jarmis, el menú desplegable del motor de búsqueda reveló tres modalidades de consulta, cada una aparentemente vinculada a un mecanismo interno distinto de interacción con el backend. Con el objetivo de caracterizar su comportamiento, se procedió a enumerar sistemáticamente cada opción.
 
-<img src="assets/7.png">  
+<img src="assets/8.png"> 
 
 La primera modalidad, basada en la búsqueda por ID, aceptaba valores enteros y devolvía un objeto JSON que contenía la huella JARM asociada al identificador solicitado. Este comportamiento evidenciaba que el servicio mantenía un repositorio interno de firmas previamente generadas, accesible sin autenticación y susceptible de enumeración exhaustiva. La estructura del JSON, junto con la ausencia de restricciones en la entrada, sugería que el backend operaba como un agregador de fingerprints, probablemente almacenados tras ejecuciones previas del motor.
 
-<img src="assets/8.png">
+<img src="assets/9.png">
 
 La segunda modalidad, denominada Fetch Jarm, presentaba una interfaz significativamente más simple: un único campo destinado a recibir una cadena de texto. La simplicidad del parámetro, unida a la semántica del servicio, permitía inferir que el backend esperaba un endpoint remoto sobre el cual ejecutar la lógica de fingerprinting. Dado que JARM es intrínsecamente un mecanismo de identificación activa de servidores TLS, resultaba razonable concluir que el campo debía aceptar un URL o, al menos, un host accesible mediante el protocolo TLS.
 
-<img src="assets/9.png"> 
+<img src="assets/10.png">   
 
 Para validar esta hipótesis y determinar si el servicio realizaba conexiones salientes hacia el recurso proporcionado, se introdujo la dirección IP del atacante en el campo de entrada. Con el fin de monitorizar cualquier intento de conexión desde el host objetivo, se habilitó un listener en el puerto 443/TCP, empleando ncat en modo SSL para emular un servidor TLS mínimo y capturar cualquier interacción entrante.
 
-<img src="assets/10.png">  
+<img src="assets/11.png"> 
 
 El resultado confirmó la sospecha inicial: inmediatamente después de enviar la solicitud, el servidor de Jarmis estableció una conexión hacia la dirección indicada, evidenciando que el backend ejecutaba de forma activa el proceso de fingerprinting sobre el host proporcionado. 
 
-<img src="assets/11.png"> 
+<img src="assets/12.png"> 
 
 El análisis de las conexiones entrantes reveló un comportamiento característico del algoritmo JARM. Este mecanismo, en su implementación estándar, genera la huella criptográfica a partir de diez intentos de negociación TLS, cada uno con variaciones específicas en los parámetros del Client Hello. 
 
-<img src="assets/12.png">  
+<img src="assets/13.png">   
 
 Sin embargo, al emplear ncat en modo SSL sin configuración adicional, únicamente se registró una única conexión en nuestro listener. Esta discrepancia se explica por la naturaleza pasiva de ncat: al no emitir respuestas válidas para las sucesivas negociaciones, el servidor objetivo interpreta los intentos como fallidos y los marca con el código 000, lo que justifica la presencia de nueve tríadas de ceros en la firma JARM devuelta por el servicio.
 
 Para obtener una visión más completa del comportamiento del backend, se habilitó el parámetro -k en ncat, permitiendo la aceptación de múltiples conexiones consecutivas. Bajo esta configuración, el listener capturó los diez intentos de conexión correspondientes al proceso completo de fingerprinting. Este resultado confirmó que el servicio Jarmis ejecuta la lógica JARM de manera íntegra, replicando fielmente la secuencia de negociaciones TLS que define la huella criptográfica.
 
-<img src="assets/13.png">  
+<img src="assets/14.png">  
 
 Un aspecto llamativo emergió al comparar los objetos JSON generados en ambas pruebas. En la segunda ejecución —aquella en la que se capturaron los diez intentos— el JSON devuelto por el servicio resultó notablemente más breve, omitiendo campos como ismalicious y server. Esta ausencia sugiere que el backend aplica una lógica condicional en función de la calidad o completitud de las respuestas obtenidas durante el fingerprinting. 
 
 En otras palabras, cuando la interacción con el host remoto no produce un conjunto de atributos suficientemente rico, el servicio complementa la firma con metadatos adicionales; mientras que, ante una secuencia completa de negociaciones, se limita a devolver la huella estricta sin anotaciones auxiliares.
 
-<img src="assets/14.png">  
+<img src="assets/15.png"> 
 
 La divergencia entre ambas firmas permitió realizar una comprobación adicional: al consultar la base de datos interna mediante la opción de búsqueda por ID, la firma correspondiente a la primera interacción —la incompleta, con nueve tríadas de ceros— sí se encontraba registrada, mientras que la segunda, derivada de la secuencia completa de diez conexiones, no figuraba en el repositorio. 
 
 Este comportamiento sugiere que el backend almacena únicamente aquellas firmas que cumplen ciertos criterios de clasificación o que han sido generadas en contextos específicos, lo que abre la puerta a hipótesis sobre mecanismos internos de validación, categorización o incluso detección de comportamientos anómalos.
-
-<img src="assets/15.png"> 
 
 <p align="center"><strong><u>Sub-Directory Enumeration</u></strong></p>
 
