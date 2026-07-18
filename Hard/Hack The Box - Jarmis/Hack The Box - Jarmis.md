@@ -25,7 +25,7 @@ Una vez que identificada la dirección IP de la máquina objetivo, utilicé el c
 - (--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
 - (-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
 
-<center><strong><u>Web Enumeration</u></strong></center>
+<center><strong>Web Enumeration</strong></center>
 
 Tras el acceso inicial a la superficie web expuesta por el activo, la interfaz permanecía indefinidamente anclada en un estado de Loading…, lo que sugería una dependencia de recursos externos o una resolución incompleta del dominio. 
 
