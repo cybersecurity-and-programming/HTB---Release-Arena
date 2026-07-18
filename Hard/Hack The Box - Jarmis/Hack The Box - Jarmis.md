@@ -135,7 +135,7 @@ La identificación de estos puertos motivó una investigación adicional sobre v
 
 La explotación de CVE 2021 38647 requiere la capacidad de emitir una petición POST directamente al servicio OMI. Sin embargo, en este escenario, los puertos 5985 y 5986 se encuentran expuestos únicamente en la interfaz interna del host, lo que imposibilita su acceso directo desde el exterior. En consecuencia, resulta imprescindible identificar un mecanismo que permita redirigir o encapsular solicitudes hacia puertos internos, lo que nos conduce a evaluar la existencia de endpoints vulnerables a Server Side Request Forgery (SSRF) dentro de la API de Jarmis.
 
-<p align="center"><strongDumping the database</strong></p>
+<p align="center"><strong>Dumping the database</strong></p>
 
 Con el objetivo de profundizar en la lógica interna del servicio y detectar posibles vectores de explotación indirecta, se procedió a volcar íntegramente la base de datos de firmas JARM mantenida por el backend. Mediante una serie de consultas iterativas —determinadas inicialmente por prueba y error— se estableció que el repositorio contenía 222 registros, cada uno accesible a través del endpoint /search/id/{jarm_id}. Para automatizar la extracción, se empleó un bucle en bash que solicitaba secuencialmente cada identificador y almacenaba la respuesta en un archivo local.
 
@@ -282,33 +282,23 @@ Una vez desplegado el servidor Flask, se verificó la cadena de redirección: al
 
 Este resultado constituye una validación crítica: la solicitud suplementaria generada por Jarmis es completamente redirigible y manipulable, lo que habilita un vector de SSRF plenamente funcional. La arquitectura en cadena permite ahora transformar la solicitud en un POST dirigido al puerto interno 5985, encapsulando el cuerpo SOAP XML necesario para explotar OMIGod. 
 
-Gopher
+<p align="center"><strong>Gopher</strong></p>
 
 La fase final de instrumentación del vector SSRF exige transformar la solicitud suplementaria generada por Jarmis en una petición POST plenamente controlada, capaz de encapsular el cuerpo SOAP XML necesario para desencadenar la vulnerabilidad OMIGod. En este contexto, el protocolo Gopher adquiere una relevancia estratégica: al carecer de cabeceras y tratar el contenido íntegro del URL como cuerpo de la solicitud, permite construir manualmente cualquier estructura HTTP, incluyendo peticiones POST con contenido arbitrario. Esta característica lo convierte en un mecanismo idóneo para encapsular el payload SOAP requerido por CVE 2021 38647.
 
- 
+<img src="assets/45.png"> 
 
 Antes de proceder a la redirección hacia el servicio OMI interno, se verificó el funcionamiento del esquema Gopher realizando solicitudes controladas hacia localhost. Para ello, se sustituyó el valor de RedirectURL en el módulo personalizado de Metasploit por un URL Gopher que contenía una petición HTTP construida manualmente. Al enviar nuevamente la solicitud desde Jarmis, la cadena de redirección culminó en una conexión entrante en el listener local, confirmando que el backend aceptaba el esquema Gopher y que la solicitud era transmitida íntegramente.
 
- 
-
-
-
-
-
-
-
-
-
-
+<img src="assets/46.png"> 
 
 Durante esta prueba emergió un detalle técnico de especial importancia. Al repetir la solicitud y volcar la respuesta a un archivo, se observó que el contenido final incluía los bytes 0x0d0a (\r\n). 
 
- 
+<img src="assets/47.png">  
 
 Esta secuencia, correspondiente a un retorno de carro y salto de línea, implica que el cuerpo de la petición contiene dos bytes adicionales respecto al contenido visible. En consecuencia, cualquier cálculo del campo Content-Length en la petición POST debe incorporar estos dos bytes suplementarios. De lo contrario, el servicio OMI rechazará la solicitud por discrepancia en la longitud declarada, invalidando el intento de explotación.
 
- 
+<img src="assets/48.png">   
 
 Este hallazgo es crítico para la fase siguiente: la construcción del URL Gopher que encapsulará la petición POST dirigida a localhost:5985. La precisión en el cálculo de la longitud del cuerpo es indispensable para evitar errores de parsing en el servicio OMI y garantizar que la carga SOAP XML sea procesada correctamente. Con la cadena de redirección plenamente operativa y el comportamiento del esquema Gopher validado, el entorno está preparado para forjar la petición POST definitiva que desencadenará la vulnerabilidad OMIGod mediante SSRF.
 
