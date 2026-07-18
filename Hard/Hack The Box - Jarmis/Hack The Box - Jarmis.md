@@ -10,13 +10,14 @@ La explotación completa se articula encadenando la solicitud suplementaria gene
 
 Como vía alternativa, también es posible interceptar y redirigir la conexión suplementaria manipulando la capa de red del sistema mediante reglas selectivas en el firewall. Esta aproximación, basada en NAT y selección estadística de paquetes, permite capturar exclusivamente el flujo TLS adicional sin interferir con las diez conexiones del fingerprinting JARM, desviándolo hacia un servicio de escucha controlado por el analista. Esta variante ofrece una solución minimalista y transparente que reproduce el comportamiento necesario para desencadenar el vector SSRF sin depender de herramientas externas.
 
-Enumeración
+<center><strong><u>Enumeración</u></strong></center>
 
 La dirección IP de la máquina víctima es 10.129.95.238. Por tanto, envié 5 trazas ICMP para verificar que existe conectividad entre las dos máquinas.
 
- 
+<img src="assets/2.png">
 
 Una vez que identificada la dirección IP de la máquina objetivo, utilicé el comando nmap -p- -sS -sC -sV --min-rate 5000 -vvv -Pn 10.129.95.238 -oN scanner_jarmis para descubrir los puertos abiertos y sus versiones:
+
 - (-p-): realiza un escaneo de todos los puertos abiertos.
 - (-sS): utilizado para realizar un escaneo TCP SYN, siendo este tipo de escaneo el más común y rápido, además de ser relativamente sigiloso ya que no llega a completar las conexiones TCP. Habitualmente se conoce esta técnica como sondeo de medio abierto (half open). Este sondeo consiste en enviar un paquete SYN, si recibe un paquete SYN/ACK indica que el puerto está abierto, en caso contrario, si recibe un paquete RST (reset), indica que el puerto está cerrado y si no recibe respuesta, se marca como filtrado.
 - (-sC): utiliza los scripts por defecto para descubrir información adicional y posibles vulnerabilidades. Esta opción es equivalente a --script=default. Es necesario tener en cuenta que algunos de estos scripts se consideran intrusivos ya que podría ser detectado por sistemas de detección de intrusiones, por lo que no se deben ejecutar en una red sin permiso.
@@ -24,37 +25,23 @@ Una vez que identificada la dirección IP de la máquina objetivo, utilicé el c
 - (--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
 - (-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
 
- 
-
-
-
-
-
-
-
-
-Web Enumeration
+<center><strong><u>Web Enumeration</u></strong></center>
 
 Tras el acceso inicial a la superficie web expuesta por el activo, la interfaz permanecía indefinidamente anclada en un estado de Loading…, lo que sugería una dependencia de recursos externos o una resolución incompleta del dominio. 
 
- 
+<img src="assets/3.png"> 
 
 Ante esta anomalía, se procedió a un análisis más granular del tráfico generado por el navegador, inspeccionando las peticiones consignadas en la pestaña Network. Allí se identificó una solicitud GET dirigida al endpoint http://jarmis.htb, lo que evidenciaba que el servicio web delegaba parte de su funcionalidad en dicho dominio.
 
- 
+<img src="assets/4.png"> 
 
 Con el fin de normalizar la resolución DNS y garantizar la correcta interacción con el servicio, se incorporó una entrada específica para jarmis.htb en el archivo /etc/hosts. 
 
- 
-
-
-
-
-
+<img src="assets/5.png"> 
 
 Tras esta modificación, el acceso al dominio reveló una plataforma que se autodenominaba Jarmis, presentada como un motor de búsqueda sustentado en mecanismos de identificación criptográfica.
 
- 
+<img src="assets/6.png"> 
 
 En este punto resultó pertinente contextualizar el concepto de JARM, dado que la nomenclatura del servicio parecía aludir directamente a esta tecnología. JARM constituye una técnica de fingerprinting activo orientada a la caracterización de servidores que implementan Transport Layer Security (TLS). Su funcionamiento se basa en la emisión de un conjunto de diez paquetes Client Hello especialmente diseñados, cada uno con variaciones en parámetros críticos del protocolo. 
 
@@ -62,24 +49,9 @@ El servidor objetivo responde con sus correspondientes Server Hello, cuyas propi
 
 La aparición de un servicio web que se autodefine como “Search Engine” pero que opera sobre la semántica de JARM constituye un indicio preliminar de que la máquina podría estar instrumentalizando esta tecnología como vector funcional o como superficie de ataque. En consecuencia, la interacción con Jarmis no solo se convierte en un paso necesario para la enumeración, sino también en un potencial punto de entrada para la explotación, especialmente si la implementación del fingerprinting presenta desviaciones respecto al estándar o expone mecanismos internos no previstos para su consumo público.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 Una vez cargada la interfaz de Jarmis, el menú desplegable del motor de búsqueda reveló tres modalidades de consulta, cada una aparentemente vinculada a un mecanismo interno distinto de interacción con el backend. Con el objetivo de caracterizar su comportamiento, se procedió a enumerar sistemáticamente cada opción.
 
- 
+<img src="assets/7.png">  
 
 La primera modalidad, basada en la búsqueda por ID, aceptaba valores enteros y devolvía un objeto JSON que contenía la huella JARM asociada al identificador solicitado. Este comportamiento evidenciaba que el servicio mantenía un repositorio interno de firmas previamente generadas, accesible sin autenticación y susceptible de enumeración exhaustiva. La estructura del JSON, junto con la ausencia de restricciones en la entrada, sugería que el backend operaba como un agregador de fingerprints, probablemente almacenados tras ejecuciones previas del motor.
 
