@@ -39,11 +39,9 @@ Aunque el framework Metasploit dispone de un módulo específicamente diseñado 
 
 <img src="assets/4.png"> 
 
-<p align="center"><strong><u>Análisis del puerto 445 (SMB)</u>p><strong><u>
+<p align="center"><strong><u>Análisis del puerto 445 (SMB)</u></strong></p>
 
 El análisis del perímetro de exposición del sistema reveló la presencia del puerto 445/tcp, asociado al protocolo Server Message Block (SMB), un mecanismo de comunicación de naturaleza transaccional diseñado para facilitar el intercambio de archivos, impresoras y otros recursos compartidos en entornos corporativos, particularmente aquellos basados en sistemas operativos de la familia Microsoft Windows. Al operar en la capa de aplicación del modelo TCP/IP, SMB habilita la interacción entre clientes y servidores mediante sesiones que permiten acceder a elementos compartidos alojados en nodos remotos. 
-
-<img src="assets/5.png"> 
 
 En este caso, la disponibilidad del servicio permitió iniciar un proceso de enumeración exhaustiva de los recursos expuestos, aprovechando la posibilidad de establecer sesiones con el usuario guest, tradicionalmente vinculado a accesos no autenticados.
 
