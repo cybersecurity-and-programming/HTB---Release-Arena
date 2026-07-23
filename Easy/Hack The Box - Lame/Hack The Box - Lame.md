@@ -25,7 +25,7 @@ Una vez que identificada la dirección IP de la máquina objetivo, utilicé el c
 
 <img src="assets/2.png">
 
-<p align="center"><strong><u>Análisis del puerto 21 (FTP)</u>p><strong><u>
+<p align="center"><strong><u>Análisis del puerto 21 (FTP)</u></strong></p>
 
 El análisis preliminar de superficie evidenció la exposición del puerto 21/tcp, correspondiente al protocolo FTP, sobre el cual se encontraba operativo el servicio vsftpd en su versión 2.3.4. Esta iteración concreta del software es ampliamente conocida por incorporar una vulnerabilidad crítica, registrada como CVE 2011 2523, cuya explotación compromete de manera severa la integridad, la confidencialidad y la disponibilidad del sistema afectado. 
 
