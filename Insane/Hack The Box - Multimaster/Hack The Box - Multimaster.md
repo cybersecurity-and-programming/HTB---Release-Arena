@@ -308,32 +308,32 @@ La función SUBSTRING() permitió extraer cada byte de forma individual. La prim
 el valor 1, lo que implica que los dos primeros dígitos del SID son 01, un comportamiento coherente con la
 estructura estándar de los identificadores de seguridad en Windows.
 
-<img src="assets/33.jpg"> 
+<img src="assets/34.jpg"> 
 
 A  partir  de  este  punto,  se  automatizó  el  proceso  mediante  un  script  que  incrementaba  la  posición  del
 substring para enumerar secuencialmente todos los bytes del SID. Durante la ejecución se observó que el
 servidor comenzaba a bloquear solicitudes tras varios intentos consecutivos, lo que sugiere la intervención
 de un WAF.
 
-<img src="assets/34.jpg"> 
+<img src="assets/35.jpg"> 
 
 Para  evitar  su  detección,  se  introdujo  un  retardo  de  dos  segundos  entre  cada  petición,  lo  que  permitió
 completar la exfiltración sin interrupciones. Una vez reconstruido el SID completo, se utilizó la función
 SUSER_SNAME() para realizar una resolución inversa y validar la identidad asociada.
 
-<img src="assets/35.jpg"> 
+<img src="assets/36.jpg"> 
 
 La  consulta  devolvió  correctamente  MEGACORP\Administrator,  lo  que  confirmó  la  integridad  del
 proceso de exfiltración.
 
-<img src="assets/36.jpg"> 
+<img src="assets/37.jpg"> 
 
 El SID obtenido tenía una longitud total de 56 bytes, de los cuales los primeros 48 bytes correspondían al
 SID del dominio, es decir, el identificador raíz a partir del cual se construyen todos los RIDs de objetos
 del bosque. Con esta información, fue posible comenzar a generar RIDs arbitrarios para enumerar usuarios
 del dominio de forma secuencial.
 
-<img src="assets/37.jpg"> 
+<img src="assets/38.jpg"> 
 
 En Active Directory, cualquier objeto creado por administradores —y no por el propio sistema operativo—
 recibe un RID igual o superior a 1000. El análisis de los últimos ocho bytes del SID exfiltrado reveló el
@@ -469,7 +469,7 @@ if __name__ == '__main__':
 Este  procedimiento  constituye  una  técnica  avanzada  de  enumeración  lateral  que  permite  reconstruir  la
 topología de identidades del dominio incluso en ausencia de privilegios directos sobre Active Directory.
 
-<img src="assets/38.jpg"> 
+<img src="assets/39.jpg"> 
 
 <p align="center"><strong><u>Foothold</u></strong></p>
 
@@ -480,7 +480,7 @@ utilizando netexec, orientado a los servicios expuestos externamente, concretame
 La prueba reveló que las credenciales tushikikatomo / finance1 eran válidas para WinRM, lo que habilitó
 un vector de acceso remoto mediante el protocolo nativo de administración de Windows en el puerto 5985.
 
-<img src="assets/39.jpg"> 
+<img src="assets/40.jpg"> 
 
 <p align="center"><strong><u>WinRM</u></strong></p>
 
@@ -497,7 +497,7 @@ El  análisis  del  directorio  Program  Files  evidenció  la  presencia  de  V
 hallazgo relevante dado que ciertas versiones del editor incorporan funcionalidades de depuración remota
 susceptibles de abuso.
 
-<img src="assets/40.jpg"> 
+<img src="assets/41.jpg"> 
 
 La  enumeración  de  procesos  mediante  Get-Process  confirmó  que  múltiples  instancias  de  VSCode  se
 encontraban activas. La verificación de la versión instalada reveló que correspondía a una iteración afectada
