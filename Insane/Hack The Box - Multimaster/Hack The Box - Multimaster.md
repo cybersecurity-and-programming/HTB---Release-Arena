@@ -27,7 +27,7 @@ compromiso total del dominio.
 
 La dirección IP de la máquina víctima es 10.129.95.200. Por tanto, envié 5 trazas ICMP para verificar que existe conectividad entre las dos máquinas.
 
-<img src="assets/2.png">
+<img src="assets/2.jpg">
 
 Una vez que identificada la dirección IP de la máquina objetivo, utilicé el comando nmap -p- -sS -sC -sV --min-rate 5000 -vvv -Pn 10.129.95.200 -oN scanner_multimaster para descubrir los puertos abiertos y sus versiones:
 
@@ -38,7 +38,7 @@ Una vez que identificada la dirección IP de la máquina objetivo, utilicé el c
 - (--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
 - (-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
 
-<img src="assets/3.png">
+<img src="assets/3.jpg">
 
 El reconocimiento inicial mediante Nmap evidenció una superficie de exposición significativamente amplia,
 con  múltiples  servicios  accesibles  desde  el  exterior.  Entre  ellos  destacaban  los  puertos  53/TCP  (DNS),
