@@ -48,18 +48,20 @@ corporativa. La propia herramienta identificó el dominio asociado como MEGACORP
 permitió inferir desde el inicio la presencia de un entorno Windows con servicios de directorio plenamente
 operativos.
 
-IIS
+<img src="assets/4.jpg"> 
+
+<p align="center"><strong><u>IIS</u></strong></p>
 
 El  acceso  al  servicio  HTTP  en  el  puerto  80  reveló  un  portal  corporativo  orientado  a  empleados,
 presumiblemente utilizado como interfaz de interacción interna. La navegación inicial permitió identificar
 un mecanismo de autenticación accesible desde el botón LOGIN.
 
-19 de agosto de 2026
-
-4
+<img src="assets/5.jpg"> 
 
 Sin  embargo,  la  funcionalidad  se  encontraba  temporalmente  inhabilitada,  devolviendo  un  mensaje  que
 informaba de tareas de mantenimiento en curso.
+
+<img src="assets/6.jpg"> 
 
 Este comportamiento sugiere que el componente de autenticación no estaba expuesto en su totalidad o que
 el backend asociado se encontraba parcialmente deshabilitado.
