@@ -23,49 +23,22 @@ La explotación de este privilegio culmina en la obtención de una sesión con p
 sistema,  habilitando  la  ejecución  de  ataques  de  replicación  como  DCSync  y,  en  última  instancia,  el
 compromiso total del dominio.
 
+<p align="center"><strong><u>Enumeración</u></strong></p>
 
-La dirección IP de la máquina víctima es 10.129.95.200. Por tanto, envié 5 trazas ICMP para verificar que
-existe conectividad entre las dos máquinas.
+La dirección IP de la máquina víctima es 10.129.95.200. Por tanto, envié 5 trazas ICMP para verificar que existe conectividad entre las dos máquinas.
 
-Enumeración
+<img src="assets/2.png">
 
-Una vez que identificada la dirección IP de la máquina objetivo, utilicé el comando nmap -p- -sS -sC -sV
---min-rate 5000 -vvv -Pn 10.129.95.200 -oN scanner_multimaster para descubrir los puertos abiertos y
-sus versiones:
+Una vez que identificada la dirección IP de la máquina objetivo, utilicé el comando nmap -p- -sS -sC -sV --min-rate 5000 -vvv -Pn 10.129.95.200 -oN scanner_multimaster para descubrir los puertos abiertos y sus versiones:
 
-
-
+- (-p-): realiza un escaneo de todos los puertos abiertos.
+- (-sS): utilizado para realizar un escaneo TCP SYN, siendo este tipo de escaneo el más común y rápido, además de ser relativamente sigiloso ya que no llega a completar las conexiones TCP. Habitualmente se conoce esta técnica como sondeo de medio abierto (half open). Este sondeo consiste en enviar un paquete SYN, si recibe un paquete SYN/ACK indica que el puerto está abierto, en caso contrario, si recibe un paquete RST (reset), indica que el puerto está cerrado y si no recibe respuesta, se marca como filtrado.
+- (-sC): utiliza los scripts por defecto para descubrir información adicional y posibles vulnerabilidades. Esta opción es equivalente a --script=default. Es necesario tener en cuenta que algunos de estos scripts se consideran intrusivos ya que podría ser detectado por sistemas de detección de intrusiones, por lo que no se deben ejecutar en una red sin permiso.
+- (-sV): Activa la detección de versiones. Esto es muy útil para identificar posibles vectores de ataque si la versión de algún servicio disponible es vulnerable. 
+- (--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
+- (-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
 
-
-
-
-
-
-
-
-(-p-): realiza un escaneo de todos los puertos abiertos.
-(-sS): utilizado para realizar un escaneo TCP SYN, siendo este tipo de escaneo el más común y rápido,
-además de ser relativamente sigiloso ya que no llega a completar las conexiones TCP. Habitualmente
-se conoce esta técnica como sondeo de medio abierto (half open). Este sondeo consiste en enviar un
-paquete SYN, si recibe un paquete SYN/ACK indica que el puerto está abierto, en caso contrario, si
-recibe un paquete RST (reset), indica que el puerto está cerrado y si no recibe respuesta, se marca
-como filtrado.
-(-sC): utiliza los scripts por defecto para descubrir información adicional y posibles vulnerabilidades.
-Esta opción es equivalente a --script=default. Es necesario tener en cuenta que algunos de estos scripts
-se consideran intrusivos ya que podría ser detectado por sistemas de detección de intrusiones, por lo
-que no se deben ejecutar en una red sin permiso.
-(-sV): Activa la detección de versiones. Esto es muy útil para identificar posibles vectores de ataque
-si la versión de algún servicio disponible es vulnerable.
-(--min-rate 5000): ajusta la velocidad de envío a 5000 paquetes por segundo.
-(-Pn): asume que la máquina a analizar está activa y omite la fase de descubrimiento de hosts.
-
-19 de agosto de 2026
-
-2
-
-19 de agosto de 2026
-
-3
+<img src="assets/3.png">
 
 El reconocimiento inicial mediante Nmap evidenció una superficie de exposición significativamente amplia,
 con  múltiples  servicios  accesibles  desde  el  exterior.  Entre  ellos  destacaban  los  puertos  53/TCP  (DNS),
