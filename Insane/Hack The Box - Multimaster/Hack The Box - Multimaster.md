@@ -471,7 +471,7 @@ topología de identidades del dominio incluso en ausencia de privilegios directo
 
 <img src="assets/38.jpg"> 
 
-Foothold
+<p align="center"><strong><u>Foothold</u></strong></p>
 
 El proceso de enumeración automatizada permitió identificar cuatro usuarios adicionales en el dominio.
 Con  este  nuevo  conjunto  de  identidades,  se  procedió  a  realizar  un  password  spraying  sistemático
@@ -480,24 +480,24 @@ utilizando netexec, orientado a los servicios expuestos externamente, concretame
 La prueba reveló que las credenciales tushikikatomo / finance1 eran válidas para WinRM, lo que habilitó
 un vector de acceso remoto mediante el protocolo nativo de administración de Windows en el puerto 5985.
 
+<img src="assets/39.jpg"> 
+
+<p align="center"><strong><u>WinRM</u></strong></p>
+
 Se  estableció  una  sesión  interactiva  utilizando  Evil-WinRM,  confirmando  la  autenticidad  de  las
 credenciales y la capacidad de ejecutar comandos en el sistema comprometido.
-
-WinRM
 
 La inspección inicial del entorno reveló que el usuario carecía de privilegios elevados y no disponía de
 acceso al directorio C:\inetpub, lo que sugiere un perfil operativo limitado.
 
-19 de agosto de 2026
-
-18
-
-Lateral Movement (cyork)
+<p align="center"><strong><u>Lateral Movement (cyork)</u></strong></p>
 
 Se continuó con la fase de enumeración del host para identificar posibles vectores de movimiento lateral.
 El  análisis  del  directorio  Program  Files  evidenció  la  presencia  de  Visual  Studio  Code  (VSCode),  un
 hallazgo relevante dado que ciertas versiones del editor incorporan funcionalidades de depuración remota
 susceptibles de abuso.
+
+<img src="assets/40.jpg"> 
 
 La  enumeración  de  procesos  mediante  Get-Process  confirmó  que  múltiples  instancias  de  VSCode  se
 encontraban activas. La verificación de la versión instalada reveló que correspondía a una iteración afectada
