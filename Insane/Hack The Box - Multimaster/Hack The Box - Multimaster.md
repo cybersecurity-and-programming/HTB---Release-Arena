@@ -182,53 +182,63 @@ que permitiera automatizar la codificación de cargas útiles arbitrarias. Se pr
 la  cadena  '  or  1=1--  -  a  su  representación  en  UTF-16,  obteniendo  un  payload  apto  para  ser  enviado  al
 endpoint sin activar los mecanismos de bloqueo previamente observados.
 
+<img src="assets/15.png"> 
+
 La ejecución de la solicitud con la carga útil codificada resultó exitosa, confirmando de manera concluyente
 la existencia de una vulnerabilidad de inyección SQL en el servicio.
+
+<img src="assets/16.jpg"> 
 
 A  partir  de  este  punto,  el  siguiente  paso  metodológico  consistió  en  determinar  el  número  de  columnas
 devueltas  por  la  consulta  subyacente,  requisito  indispensable  para  construir  payloads  más  complejos  y
 avanzar hacia técnicas de extracción de información estructurada del motor de base de datos comprometido.
 
-19 de agosto de 2026
-
-9
+<img src="assets/17.jpg"> 
 
 La  inyección  del  payload  previamente  construido  devolvió  resultados  válidos,  lo  que  confirmó  que  la
 consulta subyacente aceptaba la manipulación del parámetro y que la carga útil era procesada sin activar
 mecanismos de filtrado adicionales.
 
+<img src="assets/18.jpg"> 
+
 A  partir  de  este  punto,  resultaba  imprescindible  determinar  la  estructura  exacta  de  la  tabla  afectada,  en
 particular el número de columnas, para poder avanzar hacia técnicas de extracción más sofisticadas.
+
+<img src="assets/19.jpg"> 
 
 La prueba destinada a verificar si la tabla contenía más de cinco columnas devolvió un valor nulo, lo que
 permitió concluir que la estructura estaba compuesta exactamente por cinco columnas, en consonancia con
 los campos observados en las respuestas JSON del endpoint.
 
-19 de agosto de 2026
-
-10
+<img src="assets/20.jpg"> 
 
 La correlación con los resultados del reconocimiento inicial evidenció que el motor de base de datos en uso
 era  Microsoft  SQL  Server,  lo  que  condicionó  tanto  la  sintaxis  de  los  payloads  como  las  técnicas  de
 enumeración posteriores.
 
+<img src="assets/21.jpg"> 
+
 Se procedió entonces a identificar la versión del motor y el nombre de la base de datos activa, obteniéndose
 como resultado Hub_DB, que se convirtió en el punto focal de la fase de descubrimiento de objetos internos.
+
+<img src="assets/22.jpg"> 
 
 La enumeración de las tablas presentes en la base de datos reveló únicamente dos entidades: Colleagues y
 Logins.
 
-19 de agosto de 2026
-
-11
+<img src="assets/23.jpg"> 
 
 Mientras  que  la  primera  correspondía  al  conjunto  de  datos  ya  expuesto  por  el  portal  web,  la  segunda
 constituía un vector de interés crítico, dado que su denominación sugería la presencia de credenciales o
 artefactos relacionados con autenticación.
 
+<img src="assets/24.jpg"> 
+
 La  inspección  de  su  estructura  confirmó  esta  hipótesis:  la  tabla  Logins  contenía  exclusivamente  dos
 columnas,  username  y  password,  lo  que  indicaba  que  almacenaba  pares  de  credenciales  en  formato
 persistente.
+
+<img src="assets/25.jpg"> 
 
 La extracción de los valores contenidos en ambas columnas se completó sin restricciones, proporcionando
 un conjunto de nombres de usuario y contraseñas en formato hash. La longitud de los hashes, 96 bytes,
@@ -236,18 +246,20 @@ constituye  un  indicador  relevante  para  la  identificación  del  algoritmo 
 permitiría determinar la viabilidad de un ataque de cracking offline o la necesidad de recurrir a técnicas de
 descifrado más avanzadas.
 
-19 de agosto de 2026
-
-12
+<img src="assets/26.jpg"> 
 
 Para identificar el algoritmo de hashing empleado en las credenciales extraídas, se procedió a realizar una
 correlación entre la longitud observada —96 bytes— y los modos soportados por Hashcat, utilizando un
 filtrado previo en Bash para localizar todos los algoritmos cuya salida coincide con dicho tamaño.
 
+<img src="assets/27.jpg"> 
+
 El  análisis  reveló  que  los  candidatos  plausibles  eran  SHA2-384,  SHA3-384  y  Keccak-384,  todos  ellos
 pertenecientes a  la familia de funciones criptográficas  de 384  bits. La tabla  contenía  únicamente cuatro
 hashes  únicos,  por  lo  que  se  consolidaron  en  un  archivo  destinado  a  un  ataque  de  fuerza  bruta  offline,
 empleando los modos 10800, 17500 y 17900 de Hashcat, correspondientes a los algoritmos identificados.
+
+<img src="assets/28.jpg"> 
 
 La ejecución del ataque utilizando el modo Keccak-384 permitió descifrar tres de los cuatro hashes, lo que
 proporcionó  un  conjunto  inicial  de  contraseñas  en  texto  claro.  Dado  que  la  enumeración  previa  había
@@ -255,14 +267,14 @@ permitido  obtener  una  lista  exhaustiva  de  direcciones  de  correo  electr�
 derivar de ellas un conjunto ampliado de posibles nombres de usuario, asumiendo la práctica habitual en
 entornos empresariales de utilizar el prefijo del correo como identificador de autenticación.
 
-19 de agosto de 2026
-
-13
+<img src="assets/29.jpg"> 
 
 Con ambos conjuntos —las contraseñas descifradas y la lista de posibles usuarios— se llevó a cabo una
 campaña  de  password  spraying  contra  los  servicios  expuestos  externamente,  concretamente  SMB  y
 WinRM, utilizando la herramienta netexec para automatizar la interacción y registrar de forma precisa los
 resultados.
+
+<img src="assets/30.jpg"> 
 
 Ninguna de las combinaciones probadas resultó válida, lo que indica que las credenciales descifradas no
 pertenecen a los usuarios enumerados previamente o que su ámbito de validez se restringe a otros servicios
