@@ -1,22 +1,6 @@
-Hack The Box - Multimaster
-
-Sistema Operativo:
-Dificultad:
-Release:
-
-Windows
-Insane
-
-07/03/2020
-
-Skills Learned
-
-  SQL Injection
-  Password Cracking
-  VS Code Exploitation
-  Reverse Engineering
-  Server Operators Group Abuse
-  SeBackup Privilege Abuse
+<p align="center">
+<img src="assets/1.png" width="1000">
+</p>
 
 La intrusión se desarrolla sobre un entorno Windows de elevada complejidad, articulado en torno a una
 aplicación web corporativa que expone un servicio vulnerable a inyección SQL, vector que permite obtener
@@ -39,9 +23,6 @@ La explotación de este privilegio culmina en la obtención de una sesión con p
 sistema,  habilitando  la  ejecución  de  ataques  de  replicación  como  DCSync  y,  en  última  instancia,  el
 compromiso total del dominio.
 
-19 de agosto de 2026
-
-1
 
 La dirección IP de la máquina víctima es 10.129.95.200. Por tanto, envié 5 trazas ICMP para verificar que
 existe conectividad entre las dos máquinas.
