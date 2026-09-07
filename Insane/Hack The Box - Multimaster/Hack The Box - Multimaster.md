@@ -66,20 +66,18 @@ informaba de tareas de mantenimiento en curso.
 Este comportamiento sugiere que el componente de autenticación no estaba expuesto en su totalidad o que
 el backend asociado se encontraba parcialmente deshabilitado.
 
-19 de agosto de 2026
-
-5
+<img src="assets/7.jpg"> 
 
 La sección Gallery del portal resultó ser estática y carente de elementos interactivos relevantes, limitándose
 a la exposición de imágenes sin metadatos ni funcionalidades adicionales.
+
+<img src="assets/8.jpg"> 
 
 En contraste, la sección Colleague Finder sí presentaba un vector de interés: un campo de búsqueda que,
 incluso cuando se enviaba vacío, devolvía un conjunto de resultados con atributos asociados a empleados,
 incluyendo nombre, rol profesional y dirección de correo electrónico.
 
-19 de agosto de 2026
-
-6
+<img src="assets/9.jpg"> 
 
 Este comportamiento indicaba la existencia de un backend accesible y potencialmente manipulable, por lo
 que  se  procedió  a  interceptar la  solicitud  mediante  Burp  Suite,  reenviándola  posteriormente  al  módulo
